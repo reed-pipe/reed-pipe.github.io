@@ -51,43 +51,46 @@ export default function StatsRow({ records }: Props) {
 
   const gap = goalWeight !== null ? +(latest.weight - goalWeight).toFixed(1) : null
 
+  const colSpan = { xs: 8, sm: 8, md: 4 }
+
   return (
-    <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-      <Col xs={12} sm={8} md={4}>
-        <Card size="small">
-          <Statistic title="最新体重" value={latest.weight} suffix="kg" precision={1} />
+    <Row gutter={[8, 8]} style={{ marginBottom: 8 }}>
+      <Col {...colSpan}>
+        <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+          <Statistic title="最新" value={latest.weight} suffix="kg" precision={1} valueStyle={{ fontSize: 20 }} />
         </Card>
       </Col>
-      <Col xs={12} sm={8} md={4}>
-        <Card size="small">
-          <Statistic title="平均体重" value={avg} suffix="kg" precision={1} />
+      <Col {...colSpan}>
+        <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+          <Statistic title="平均" value={avg} suffix="kg" precision={1} valueStyle={{ fontSize: 20 }} />
         </Card>
       </Col>
-      <Col xs={12} sm={8} md={4}>
-        <Card size="small">
-          <Statistic title="最轻" value={min} suffix="kg" precision={1} />
+      <Col {...colSpan}>
+        <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+          <Statistic title="最轻" value={min} suffix="kg" precision={1} valueStyle={{ fontSize: 20 }} />
         </Card>
       </Col>
-      <Col xs={12} sm={8} md={4}>
-        <Card size="small">
-          <Statistic title="最重" value={max} suffix="kg" precision={1} />
+      <Col {...colSpan}>
+        <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+          <Statistic title="最重" value={max} suffix="kg" precision={1} valueStyle={{ fontSize: 20 }} />
         </Card>
       </Col>
       {latest.bmi != null && (
-        <Col xs={12} sm={8} md={4}>
-          <Card size="small">
-            <Statistic title="最新 BMI" value={latest.bmi} precision={1} />
+        <Col {...colSpan}>
+          <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+            <Statistic title="BMI" value={latest.bmi} precision={1} valueStyle={{ fontSize: 20 }} />
           </Card>
         </Col>
       )}
       {weekTrend !== null && (
-        <Col xs={12} sm={8} md={4}>
-          <Card size="small">
+        <Col {...colSpan}>
+          <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
             <Statistic
               title="周趋势"
               value={Math.abs(weekTrend)}
               precision={1}
               suffix="kg"
+              valueStyle={{ fontSize: 20 }}
               prefix={
                 weekTrend > 0 ? (
                   <ArrowUpOutlined style={{ color: colorError }} />
@@ -102,14 +105,14 @@ export default function StatsRow({ records }: Props) {
         </Col>
       )}
       {gap !== null && (
-        <Col xs={12} sm={8} md={4}>
-          <Card size="small">
+        <Col {...colSpan}>
+          <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
             <Statistic
               title="距目标"
               value={Math.abs(gap)}
               precision={1}
               suffix="kg"
-              valueStyle={{ color: gap <= 0 ? colorSuccess : colorError }}
+              valueStyle={{ color: gap <= 0 ? colorSuccess : colorError, fontSize: 20 }}
               prefix={gap > 0 ? '+' : gap < 0 ? '-' : ''}
             />
           </Card>
