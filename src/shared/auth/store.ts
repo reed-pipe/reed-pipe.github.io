@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { deriveKey, generateSalt, createVerifier, checkVerifier } from './crypto'
+import { deriveKey, generateSalt, createVerifier, checkVerifier, exportKey, importKey } from './crypto'
 import {
   listGists,
   getGist,
@@ -11,6 +11,7 @@ import {
 
 const REGISTRY_FILENAME = 'pa-registry.json'
 const ADMIN_USERNAME = 'reed-pipe'
+const SESSION_KEY = 'pa_session'
 
 interface UserEntry {
   salt: string
@@ -44,7 +45,6 @@ async function findRegistryGist(): Promise<GistInfo | null> {
   const gists = await listGists()
   const match = gists.find((g) => REGISTRY_FILENAME in g.files)
   if (!match) return null
-  // listGists 不返回文件内容，需要单独获取
   return getGist(match.id)
 }
 
@@ -56,6 +56,21 @@ async function loadRegistry(
   return JSON.parse(file.content) as Registry
 }
 
+async function saveSession(
+  username: string,
+  dataGistId: string,
+  registryGistId: string,
+  key: CryptoKey,
+) {
+  const keyHex = await exportKey(key)
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    username,
+    dataGistId,
+    registryGistId,
+    keyHex,
+  }))
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   username: null,
   isAdmin: false,
@@ -65,24 +80,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialized: false,
 
   async init() {
-    // Restore session if key is still in sessionStorage
-    const saved = sessionStorage.getItem('pa_session')
+    const saved = localStorage.getItem(SESSION_KEY)
     if (saved) {
       try {
-        const { username, dataGistId, registryGistId } = JSON.parse(saved)
-        // Key cannot be restored from sessionStorage (non-extractable CryptoKey)
-        // User will need to re-login, but we keep username for display
+        const { username, dataGistId, registryGistId, keyHex } = JSON.parse(saved)
+        const cryptoKey = keyHex ? await importKey(keyHex) : null
         set({
           username,
           isAdmin: username === ADMIN_USERNAME,
+          cryptoKey,
           dataGistId,
           registryGistId,
           initialized: true,
-          cryptoKey: null, // Will need re-auth for sync
         })
         return
       } catch {
-        sessionStorage.removeItem('pa_session')
+        localStorage.removeItem(SESSION_KEY)
       }
     }
     set({ initialized: true })
@@ -93,7 +106,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       throw new Error('服务未配置，无法注册')
     }
 
-    // Find or create registry
     let registryGist = await findRegistryGist()
     let registry: Registry
 
@@ -107,19 +119,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       throw new Error('用户名已存在')
     }
 
-    // Derive key
     const salt = generateSalt()
     const key = await deriveKey(password, salt)
     const verifier = await createVerifier(key)
 
-    // Create user data gist
     const dataGist = await createGist(
       `pa-data-${username}.json`,
       JSON.stringify({ syncVersion: 1, iv: '', data: '' }),
       `PA data for ${username}`,
     )
 
-    // Update registry
     registry.users[username] = {
       salt,
       verifier,
@@ -138,13 +147,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       )
     }
 
-    // Save session
-    const session = {
-      username,
-      dataGistId: dataGist.id,
-      registryGistId: registryGist.id,
-    }
-    sessionStorage.setItem('pa_session', JSON.stringify(session))
+    await saveSession(username, dataGist.id, registryGist.id, key)
 
     set({
       username,
@@ -177,13 +180,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       throw new Error('用户名或密码错误')
     }
 
-    // Save session
-    const session = {
-      username,
-      dataGistId: user.dataGistId,
-      registryGistId: registryGist.id,
-    }
-    sessionStorage.setItem('pa_session', JSON.stringify(session))
+    await saveSession(username, user.dataGistId, registryGist.id, key)
 
     set({
       username,
@@ -195,7 +192,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout() {
-    sessionStorage.removeItem('pa_session')
+    localStorage.removeItem(SESSION_KEY)
     set({
       username: null,
       isAdmin: false,

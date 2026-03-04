@@ -41,7 +41,7 @@ export async function deriveKey(
     },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
-    false,
+    true,
     ['encrypt', 'decrypt'],
   )
 }
@@ -75,6 +75,21 @@ export async function decrypt(
     hexToBytes(ciphertextHex),
   )
   return dec.decode(decrypted)
+}
+
+export async function exportKey(key: CryptoKey): Promise<string> {
+  const raw = await crypto.subtle.exportKey('raw', key)
+  return bytesToHex(new Uint8Array(raw))
+}
+
+export async function importKey(keyHex: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    'raw',
+    hexToBytes(keyHex),
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt'],
+  )
 }
 
 export async function createVerifier(
