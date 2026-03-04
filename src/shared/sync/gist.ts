@@ -5,7 +5,7 @@ const API = 'https://api.github.com'
 function headers() {
   if (!SERVICE_TOKEN) throw new Error('VITE_SERVICE_TOKEN not configured')
   return {
-    Authorization: `token ${SERVICE_TOKEN}`,
+    Authorization: `Bearer ${SERVICE_TOKEN}`,
     Accept: 'application/vnd.github+json',
     'Content-Type': 'application/json',
   }
