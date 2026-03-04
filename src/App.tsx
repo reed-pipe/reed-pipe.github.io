@@ -16,12 +16,23 @@ function SyncOnMount() {
   const db = useDb()
 
   useEffect(() => {
-    if (!cryptoKey || !dataGistId) return
-    const { setSyncing, setSynced, setError } = useSyncStore.getState()
-    setSyncing(true)
-    pullData(db, cryptoKey, dataGistId)
-      .then(() => setSynced())
-      .catch((err) => setError(err instanceof Error ? err.message : 'Pull failed'))
+    async function init() {
+      // 首次登录：迁移旧数据库数据
+      const { migrateLegacyData } = await import('./shared/db/migrate-legacy')
+      await migrateLegacyData(db)
+
+      // 拉取云端数据
+      if (!cryptoKey || !dataGistId) return
+      const { setSyncing, setSynced, setError } = useSyncStore.getState()
+      setSyncing(true)
+      try {
+        await pullData(db, cryptoKey, dataGistId)
+        setSynced()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Pull failed')
+      }
+    }
+    void init()
   }, [cryptoKey, dataGistId, db])
 
   return null
