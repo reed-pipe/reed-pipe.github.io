@@ -8,7 +8,7 @@ import LoginPage from './shared/auth/LoginPage'
 import { useAuthStore } from './shared/auth/store'
 import { DbProvider } from './shared/db/context'
 import { useSyncStore } from './shared/sync/store'
-import { pullData } from './shared/sync/sync'
+import { pullData, pushData } from './shared/sync/sync'
 import { useDb } from './shared/db/context'
 
 function SyncOnMount() {
@@ -21,12 +21,19 @@ function SyncOnMount() {
       const { migrateLegacyData } = await import('./shared/db/migrate-legacy')
       await migrateLegacyData(db)
 
-      // 拉取云端数据
+      // 同步云端数据
       if (!cryptoKey || !dataGistId) return
       const { setSyncing, setSynced, setError } = useSyncStore.getState()
       setSyncing(true)
       try {
-        await pullData(db, cryptoKey, dataGistId)
+        const pulled = await pullData(db, cryptoKey, dataGistId)
+        if (!pulled) {
+          // 云端为空（新注册或迁移后），推送本地数据上去
+          const count = await db.weightRecords.count() + await db.kv.count()
+          if (count > 0) {
+            await pushData(db, cryptoKey, dataGistId)
+          }
+        }
         setSynced()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Pull failed')
