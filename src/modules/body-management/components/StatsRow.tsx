@@ -51,7 +51,7 @@ export default function StatsRow({ records }: Props) {
 
   const gap = goalWeight !== null ? +(latest.weight - goalWeight).toFixed(1) : null
 
-  const colSpan = { xs: 8, sm: 8, md: 4 }
+  const colSpan = { xs: 12, sm: 8, md: 4 }
 
   return (
     <Row gutter={[8, 8]} style={{ marginBottom: 8 }}>

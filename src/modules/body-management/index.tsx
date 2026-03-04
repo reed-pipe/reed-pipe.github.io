@@ -30,14 +30,16 @@ export default function BodyManagement() {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button icon={<SettingOutlined />} onClick={() => setSettingOpen(true)}>
+      <WeightForm onDataChanged={notifyChanged} />
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontWeight: 500, fontSize: 15 }}>数据概览</span>
+        <Button type="text" icon={<SettingOutlined />} onClick={() => setSettingOpen(true)}>
           设置
         </Button>
       </div>
 
       <StatsRow records={records} />
-      <WeightForm onDataChanged={notifyChanged} />
 
       <Tabs
         defaultActiveKey="chart"

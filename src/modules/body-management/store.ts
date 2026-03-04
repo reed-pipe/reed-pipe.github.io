@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AppDb } from '@/shared/db'
+import { calculateBMI } from './utils'
 
 interface BodyStore {
   height: number | null // cm
@@ -39,7 +40,7 @@ export const useBodyStore = create<BodyStore>((set) => ({
       const all = await db.weightRecords.toArray()
       const updates = all.map((r) => ({
         key: r.id,
-        changes: { bmi: +(r.weight / (v / 100) ** 2).toFixed(1) },
+        changes: { bmi: calculateBMI(r.weight, v) },
       }))
       if (updates.length > 0) {
         await db.weightRecords.bulkUpdate(updates)

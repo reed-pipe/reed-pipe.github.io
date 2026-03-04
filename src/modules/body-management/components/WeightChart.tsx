@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useCallback } from 'react'
-import { Empty, Popover, theme } from 'antd'
+import { Empty, theme } from 'antd'
 import type { WeightRecord } from '@/shared/db'
 import { useBodyStore } from '../store'
 
@@ -211,22 +211,20 @@ export default function WeightChart({ records }: Props) {
 
       {/* 悬浮信息展示在图表下方，移动端友好 */}
       {activeRecord && (
-        <Popover open={false}>
-          <div
-            style={{
-              padding: '6px 12px',
-              fontSize: 13,
-              color: colorTextSecondary,
-              textAlign: 'center',
-              borderTop: `1px solid ${colorBorderSecondary}`,
-            }}
-          >
-            {activeRecord.date} {periodLabel(activeRecord.period)}
-            {' · '}
-            <strong>{activeRecord.weight} kg</strong>
-            {activeRecord.bmi != null && ` · BMI ${activeRecord.bmi}`}
-          </div>
-        </Popover>
+        <div
+          style={{
+            padding: '6px 12px',
+            fontSize: 13,
+            color: colorTextSecondary,
+            textAlign: 'center',
+            borderTop: `1px solid ${colorBorderSecondary}`,
+          }}
+        >
+          {activeRecord.date} {periodLabel(activeRecord.period)}
+          {' · '}
+          <strong>{activeRecord.weight} kg</strong>
+          {activeRecord.bmi != null && ` · BMI ${activeRecord.bmi}`}
+        </div>
       )}
     </div>
   )

@@ -32,10 +32,10 @@ export default function GoalSetting({ open, onClose, onDataChanged }: Props) {
     <Modal title="身材设置" open={open} onOk={handleOk} onCancel={onClose} destroyOnClose>
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item name="height" label="身高 (cm)">
-          <InputNumber min={50} max={250} step={0.1} style={{ width: '100%' }} placeholder="输入身高以自动计算 BMI" />
+          <InputNumber min={50} max={250} step={0.1} precision={1} style={{ width: '100%' }} placeholder="输入身高以自动计算 BMI" />
         </Form.Item>
         <Form.Item name="goalWeight" label="目标体重 (kg)">
-          <InputNumber min={20} max={300} step={0.1} style={{ width: '100%' }} placeholder="设置后图表会显示目标线" />
+          <InputNumber min={20} max={300} step={0.1} precision={1} style={{ width: '100%' }} placeholder="设置后图表会显示目标线" />
         </Form.Item>
       </Form>
     </Modal>
