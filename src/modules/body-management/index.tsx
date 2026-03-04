@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Button, Space, Tabs } from 'antd'
 import { SettingOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/shared/db'
+import { useDb } from '@/shared/db/context'
+import { useDataChanged } from '@/shared/sync/useDataChanged'
 import { useBodyStore } from './store'
 import WeightForm from './components/WeightForm'
 import WeightChart from './components/WeightChart'
@@ -13,15 +14,18 @@ import GoalSetting from './components/GoalSetting'
 export default function BodyManagement() {
   const [settingOpen, setSettingOpen] = useState(false)
   const { loaded, load } = useBodyStore()
+  const db = useDb()
+  const notifyChanged = useDataChanged()
 
   useEffect(() => {
     if (!loaded) {
-      void load()
+      void load(db)
     }
-  }, [loaded, load])
+  }, [loaded, load, db])
 
   const records = useLiveQuery(() =>
     db.weightRecords.orderBy('createdAt').toArray(),
+    [db],
   ) ?? []
 
   return (
@@ -33,7 +37,7 @@ export default function BodyManagement() {
       </div>
 
       <StatsRow records={records} />
-      <WeightForm />
+      <WeightForm onDataChanged={notifyChanged} />
 
       <Tabs
         defaultActiveKey="chart"
@@ -46,12 +50,12 @@ export default function BodyManagement() {
           {
             key: 'table',
             label: '记录列表',
-            children: <WeightTable records={records} />,
+            children: <WeightTable onDataChanged={notifyChanged} />,
           },
         ]}
       />
 
-      <GoalSetting open={settingOpen} onClose={() => setSettingOpen(false)} />
+      <GoalSetting open={settingOpen} onClose={() => setSettingOpen(false)} onDataChanged={notifyChanged} />
     </Space>
   )
 }

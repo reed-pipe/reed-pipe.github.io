@@ -1,13 +1,13 @@
 import { create } from 'zustand'
-import { db } from '@/shared/db'
+import type { AppDb } from '@/shared/db'
 
 interface BodyStore {
   height: number | null // cm
   goalWeight: number | null // kg
   loaded: boolean
-  load: () => Promise<void>
-  setHeight: (v: number | null) => Promise<void>
-  setGoalWeight: (v: number | null) => Promise<void>
+  load: (db: AppDb) => Promise<void>
+  setHeight: (v: number | null, db: AppDb) => Promise<void>
+  setGoalWeight: (v: number | null, db: AppDb) => Promise<void>
 }
 
 export const useBodyStore = create<BodyStore>((set) => ({
@@ -15,7 +15,7 @@ export const useBodyStore = create<BodyStore>((set) => ({
   goalWeight: null,
   loaded: false,
 
-  async load() {
+  async load(db) {
     const [h, g] = await Promise.all([
       db.kv.get('body_height'),
       db.kv.get('body_goalWeight'),
@@ -27,14 +27,14 @@ export const useBodyStore = create<BodyStore>((set) => ({
     })
   },
 
-  async setHeight(v) {
+  async setHeight(v, db) {
     if (v === null) {
       await db.kv.delete('body_height')
     } else {
       await db.kv.put({ key: 'body_height', value: v })
     }
 
-    // 批量更新历史 BMI（先完成 DB 写入再更新 UI）
+    // 批量更新历史 BMI
     if (v !== null) {
       const all = await db.weightRecords.toArray()
       const updates = all.map((r) => ({
@@ -48,7 +48,7 @@ export const useBodyStore = create<BodyStore>((set) => ({
     set({ height: v })
   },
 
-  async setGoalWeight(v) {
+  async setGoalWeight(v, db) {
     if (v === null) {
       await db.kv.delete('body_goalWeight')
     } else {

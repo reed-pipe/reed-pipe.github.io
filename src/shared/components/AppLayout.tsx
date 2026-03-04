@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Drawer, Button, theme, Grid } from 'antd'
+import { Layout, Menu, Drawer, Button, theme, Grid, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
-import { MenuOutlined } from '@ant-design/icons'
+import { MenuOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons'
 import { routes, type RouteConfig } from '../../router'
+import { useAuthStore } from '../auth/store'
+import SyncIndicator from '../sync/SyncIndicator'
 
 const { Header, Sider, Content } = Layout
 const { useBreakpoint } = Grid
@@ -32,6 +34,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken()
 
+  const { username, logout } = useAuthStore()
+
   const onMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key)
     if (isMobile) setDrawerOpen(false)
@@ -45,6 +49,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       onClick={onMenuClick}
     />
   )
+
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'username',
+      label: username,
+      icon: <UserOutlined />,
+      disabled: true,
+    },
+    { type: 'divider' },
+    {
+      key: 'logout',
+      label: '退出登录',
+      icon: <LogoutOutlined />,
+      danger: true,
+      onClick: logout,
+    },
+  ]
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -104,7 +125,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClick={() => setDrawerOpen(true)}
             />
           )}
-          {routes.find((r) => r.path === location.pathname)?.label ?? ''}
+          <span style={{ flex: 1 }}>
+            {routes.find((r) => r.path === location.pathname)?.label ?? ''}
+          </span>
+          <SyncIndicator />
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Button type="text" icon={<UserOutlined />} size="small">
+              {!isMobile && username}
+            </Button>
+          </Dropdown>
         </Header>
         <Content
           style={{

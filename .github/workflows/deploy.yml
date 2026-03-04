@@ -27,6 +27,8 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_SERVICE_TOKEN: ${{ secrets.SERVICE_GIST_TOKEN }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

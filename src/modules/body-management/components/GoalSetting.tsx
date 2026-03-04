@@ -1,15 +1,18 @@
 import { useEffect } from 'react'
 import { Modal, Form, InputNumber } from 'antd'
+import { useDb } from '@/shared/db/context'
 import { useBodyStore } from '../store'
 
 interface Props {
   open: boolean
   onClose: () => void
+  onDataChanged: () => void
 }
 
-export default function GoalSetting({ open, onClose }: Props) {
+export default function GoalSetting({ open, onClose, onDataChanged }: Props) {
   const { height, goalWeight, setHeight, setGoalWeight } = useBodyStore()
   const [form] = Form.useForm<{ height: number | null; goalWeight: number | null }>()
+  const db = useDb()
 
   useEffect(() => {
     if (open) {
@@ -19,8 +22,9 @@ export default function GoalSetting({ open, onClose }: Props) {
 
   const handleOk = async () => {
     const values = await form.validateFields()
-    await setHeight(values.height)
-    await setGoalWeight(values.goalWeight)
+    await setHeight(values.height, db)
+    await setGoalWeight(values.goalWeight, db)
+    onDataChanged()
     onClose()
   }
 

@@ -1,7 +1,7 @@
 import { Form, DatePicker, Select, InputNumber, Input, Button, Grid } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { db } from '@/shared/db'
+import { useDb } from '@/shared/db/context'
 import type { WeightRecord } from '@/shared/db'
 import { useBodyStore } from '../store'
 
@@ -20,11 +20,16 @@ interface FormValues {
   note?: string
 }
 
-export default function WeightForm() {
+interface Props {
+  onDataChanged: () => void
+}
+
+export default function WeightForm({ onDataChanged }: Props) {
   const [form] = Form.useForm<FormValues>()
   const height = useBodyStore((s) => s.height)
   const screens = useBreakpoint()
   const isMobile = !screens.md
+  const db = useDb()
 
   const handleSubmit = async (values: FormValues) => {
     const weight = values.weight
@@ -39,6 +44,7 @@ export default function WeightForm() {
       createdAt: Date.now(),
     })
 
+    onDataChanged()
     form.resetFields()
     form.setFieldsValue({ date: dayjs(), period: 'morning' })
   }
