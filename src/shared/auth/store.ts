@@ -42,7 +42,10 @@ interface AuthState {
 
 async function findRegistryGist(): Promise<GistInfo | null> {
   const gists = await listGists()
-  return gists.find((g) => REGISTRY_FILENAME in g.files) ?? null
+  const match = gists.find((g) => REGISTRY_FILENAME in g.files)
+  if (!match) return null
+  // listGists 不返回文件内容，需要单独获取
+  return getGist(match.id)
 }
 
 async function loadRegistry(
