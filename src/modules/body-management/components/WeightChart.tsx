@@ -7,8 +7,30 @@ interface Props {
   records: WeightRecord[]
 }
 
-const PADDING = { top: 28, right: 24, bottom: 32, left: 48 }
+const PADDING = { top: 28, right: 48, bottom: 32, left: 48 }
 const SVG_HEIGHT = 260
+
+/** 生成"好看"的 Y 轴刻度：对齐到 0.5 / 1 / 2 / 5 的整数倍 */
+function niceYTicks(min: number, max: number, targetCount = 5): number[] {
+  const rawStep = (max - min) / targetCount
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)))
+  const residual = rawStep / magnitude
+  let niceStep: number
+  if (residual <= 1) niceStep = 1 * magnitude
+  else if (residual <= 2) niceStep = 2 * magnitude
+  else if (residual <= 5) niceStep = 5 * magnitude
+  else niceStep = 10 * magnitude
+  // 确保最小步长 0.5
+  if (niceStep < 0.5) niceStep = 0.5
+
+  const niceMin = Math.floor(min / niceStep) * niceStep
+  const niceMax = Math.ceil(max / niceStep) * niceStep
+  const ticks: number[] = []
+  for (let v = niceMin; v <= niceMax + niceStep * 0.01; v += niceStep) {
+    ticks.push(+v.toFixed(2))
+  }
+  return ticks
+}
 
 export default function WeightChart({ records }: Props) {
   const goalWeight = useBodyStore((s) => s.goalWeight)
@@ -23,7 +45,7 @@ export default function WeightChart({ records }: Props) {
     [records],
   )
 
-  // 用容器宽度做自适应
+  // 容器宽度自适应
   const [containerWidth, setContainerWidth] = useState(400)
   const measuredRef = useCallback((node: HTMLDivElement | null) => {
     if (node) {
@@ -34,7 +56,6 @@ export default function WeightChart({ records }: Props) {
         if (entry) setContainerWidth(entry.contentRect.width)
       })
       ro.observe(node)
-      return () => ro.disconnect()
     }
   }, [])
 
@@ -47,30 +68,41 @@ export default function WeightChart({ records }: Props) {
   const minW = Math.min(...allValues)
   const maxW = Math.max(...allValues)
   const range = maxW - minW || 1
-  const yMin = minW - range * 0.1
-  const yMax = maxW + range * 0.1
-  const yRange = yMax - yMin
 
-  const yTicks: number[] = []
-  const step = Math.ceil(yRange / 5) || 1
-  for (let v = Math.floor(yMin); v <= Math.ceil(yMax); v += step) {
-    yTicks.push(v)
-  }
+  const yTicks = niceYTicks(minW - range * 0.1, maxW + range * 0.1)
+  const yMin = yTicks[0]!
+  const yMax = yTicks[yTicks.length - 1]!
+  const yRange = yMax - yMin || 1
 
-  // 图表宽度：最少 = 容器宽度，数据多时可滚动
-  const minDataWidth = sorted.length * 50
-  const chartWidth = Math.max(minDataWidth, containerWidth)
+  // 自适应：数据量少时撑满容器，数据多时允许滚动但间距不低于 28px
+  const MIN_POINT_GAP = 28
+  const plotW_container = containerWidth - PADDING.left - PADDING.right
+  const naturalGap = sorted.length > 1 ? plotW_container / (sorted.length - 1) : plotW_container
+  const needsScroll = naturalGap < MIN_POINT_GAP && sorted.length > 1
+  const chartWidth = needsScroll
+    ? PADDING.left + PADDING.right + (sorted.length - 1) * MIN_POINT_GAP
+    : containerWidth
   const plotW = chartWidth - PADDING.left - PADDING.right
   const plotH = SVG_HEIGHT - PADDING.top - PADDING.bottom
 
   const toX = (i: number) => PADDING.left + (sorted.length === 1 ? plotW / 2 : (i / (sorted.length - 1)) * plotW)
   const toY = (w: number) => PADDING.top + plotH - ((w - yMin) / yRange) * plotH
 
-  const points = sorted.map((r, i) => `${toX(i)},${toY(r.weight)}`).join(' ')
+  const linePoints = sorted.map((r, i) => `${toX(i)},${toY(r.weight)}`).join(' ')
+  // 面积填充的路径：折线 → 右下 → 左下 → 闭合
+  const areaPath = sorted.length > 0
+    ? `M${toX(0)},${toY(sorted[0]!.weight)} ` +
+      sorted.slice(1).map((r, i) => `L${toX(i + 1)},${toY(r.weight)}`).join(' ') +
+      ` L${toX(sorted.length - 1)},${PADDING.top + plotH} L${toX(0)},${PADDING.top + plotH} Z`
+    : ''
 
   const periodLabel = (p: string) => (p === 'morning' ? '早晨' : p === 'evening' ? '晚上' : '其他')
 
-  // 触摸 / 点击查找最近的数据点
+  // 最新数据点
+  const lastIdx = sorted.length - 1
+  const lastRecord = sorted[lastIdx]
+
+  // 触摸 / 鼠标查找最近数据点
   const handleInteraction = (clientX: number) => {
     const container = containerRef.current
     if (!container) return
@@ -90,15 +122,20 @@ export default function WeightChart({ records }: Props) {
 
   const activeRecord = activeIdx !== null ? sorted[activeIdx] : undefined
 
+  // X 轴标签间隔：确保标签不重叠
+  const labelWidth = 42
+  const maxLabels = Math.max(2, Math.floor(plotW / labelWidth))
+  const labelInterval = Math.max(1, Math.ceil(sorted.length / maxLabels))
+
   return (
     <div
       ref={(node) => { containerRef.current = node; measuredRef(node) }}
-      style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+      style={{ overflowX: needsScroll ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch' }}
     >
       <svg
         width={chartWidth}
         height={SVG_HEIGHT}
-        style={{ display: 'block', touchAction: 'pan-x' }}
+        style={{ display: 'block', touchAction: needsScroll ? 'pan-x' : 'none' }}
         onTouchMove={(e) => {
           const touch = e.touches[0]
           if (touch) handleInteraction(touch.clientX)
@@ -107,6 +144,13 @@ export default function WeightChart({ records }: Props) {
         onMouseMove={(e) => handleInteraction(e.clientX)}
         onMouseLeave={() => setActiveIdx(null)}
       >
+        <defs>
+          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colorPrimary} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={colorPrimary} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+
         {/* Y 轴刻度线 + 标签 */}
         {yTicks.map((v) => (
           <g key={v}>
@@ -126,15 +170,14 @@ export default function WeightChart({ records }: Props) {
               fontSize={11}
               fill={colorTextSecondary}
             >
-              {v}
+              {v % 1 === 0 ? v : v.toFixed(1)}
             </text>
           </g>
         ))}
 
-        {/* X 轴日期标签（移动端间隔显示） */}
+        {/* X 轴日期标签 */}
         {sorted.map((r, i) => {
-          const labelInterval = chartWidth < 500 ? Math.max(1, Math.floor(sorted.length / 6)) : 1
-          if (i % labelInterval !== 0 && i !== sorted.length - 1) return null
+          if (i % labelInterval !== 0 && i !== lastIdx) return null
           return (
             <text
               key={r.id}
@@ -173,12 +216,16 @@ export default function WeightChart({ records }: Props) {
           </>
         )}
 
+        {/* 渐变面积填充 */}
+        <path d={areaPath} fill="url(#areaGradient)" />
+
         {/* 折线 */}
         <polyline
           fill="none"
           stroke={colorPrimary}
           strokeWidth={2}
-          points={points}
+          strokeLinejoin="round"
+          points={linePoints}
         />
 
         {/* 数据点 */}
@@ -187,14 +234,28 @@ export default function WeightChart({ records }: Props) {
             key={r.id}
             cx={toX(i)}
             cy={toY(r.weight)}
-            r={activeIdx === i ? 6 : 4}
-            fill={activeIdx === i ? colorError : colorPrimary}
+            r={activeIdx === i ? 6 : i === lastIdx ? 5 : 3.5}
+            fill={activeIdx === i ? colorError : i === lastIdx ? colorPrimary : colorPrimary}
             stroke="#fff"
-            strokeWidth={2}
+            strokeWidth={activeIdx === i || i === lastIdx ? 2 : 1.5}
           />
         ))}
 
-        {/* 激活点的竖线指示器 */}
+        {/* 最新值标注 */}
+        {activeIdx === null && lastRecord && (
+          <text
+            x={toX(lastIdx) + 8}
+            y={toY(lastRecord.weight)}
+            dominantBaseline="middle"
+            fontSize={12}
+            fontWeight={600}
+            fill={colorPrimary}
+          >
+            {lastRecord.weight}
+          </text>
+        )}
+
+        {/* 激活点竖线指示器 */}
         {activeIdx !== null && (
           <line
             x1={toX(activeIdx)}
@@ -209,7 +270,7 @@ export default function WeightChart({ records }: Props) {
         )}
       </svg>
 
-      {/* 悬浮信息展示在图表下方，移动端友好 */}
+      {/* 悬浮信息 */}
       {activeRecord && (
         <div
           style={{
