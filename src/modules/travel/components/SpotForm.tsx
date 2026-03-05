@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import type { TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
 import { compressImage } from '../utils'
+import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
 const MAX_PHOTOS = 5
@@ -25,6 +26,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const [photos, setPhotos] = useState<string[]>([])
+  const [location, setLocation] = useState<LocationValue | null>(null)
   const db = useDb()
 
   const handleOpen = (isOpen: boolean) => {
@@ -33,16 +35,19 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         form.setFieldsValue({
           name: spot.name,
           date: dayjs(spot.date),
-          address: spot.address,
-          lat: spot.lat,
-          lng: spot.lng,
           cost: spot.cost,
           note: spot.note,
         })
         setPhotos(spot.photos ?? [])
+        setLocation(
+          spot.lat != null && spot.lng != null
+            ? { lat: spot.lat, lng: spot.lng, address: spot.address ?? '' }
+            : null,
+        )
       } else {
         form.resetFields()
         setPhotos([])
+        setLocation(null)
       }
     }
   }
@@ -69,9 +74,9 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         tripId,
         name: values.name,
         date: values.date.format('YYYY-MM-DD'),
-        address: values.address,
-        lat: values.lat,
-        lng: values.lng,
+        address: location?.address,
+        lat: location?.lat,
+        lng: location?.lng,
         photos,
         cost: values.cost,
         note: values.note,
@@ -109,7 +114,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
       onOk={handleSubmit}
       confirmLoading={submitting}
       afterOpenChange={handleOpen}
-      width={480}
+      width={520}
       destroyOnClose={false}
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
@@ -122,17 +127,9 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
             disabledDate={(d) => d.isBefore(tripStartDate, 'day') || d.isAfter(tripEndDate, 'day')}
           />
         </Form.Item>
-        <Form.Item name="address" label="地址">
-          <Input placeholder="详细地址（可选）" maxLength={100} />
+        <Form.Item label="位置">
+          <LocationPicker value={location} onChange={setLocation} />
         </Form.Item>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item name="lat" label="纬度" style={{ flex: 1 }}>
-            <InputNumber placeholder="可选" precision={6} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="lng" label="经度" style={{ flex: 1 }}>
-            <InputNumber placeholder="可选" precision={6} style={{ width: '100%' }} />
-          </Form.Item>
-        </div>
         <Form.Item name="cost" label="花费">
           <InputNumber prefix="¥" min={0} precision={0} style={{ width: '100%' }} placeholder="可选" />
         </Form.Item>
