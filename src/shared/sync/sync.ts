@@ -16,6 +16,8 @@ interface PlainData {
     kv: Array<{ key: string; value: unknown }>
     weightRecords: Array<Record<string, unknown>>
     bodyMeasurements?: Array<Record<string, unknown>>
+    trips?: Array<Record<string, unknown>>
+    tripSpots?: Array<Record<string, unknown>>
   }
 }
 
@@ -24,10 +26,12 @@ export async function pushData(
   key: CryptoKey,
   dataGistId: string,
 ): Promise<void> {
-  const [kvItems, weightRecords, bodyMeasurements] = await Promise.all([
+  const [kvItems, weightRecords, bodyMeasurements, trips, tripSpots] = await Promise.all([
     db.kv.toArray(),
     db.weightRecords.toArray(),
     db.bodyMeasurements.toArray(),
+    db.trips.toArray(),
+    db.tripSpots.toArray(),
   ])
 
   const plain: PlainData = {
@@ -36,6 +40,8 @@ export async function pushData(
       kv: kvItems.map((item) => ({ key: item.key, value: item.value })),
       weightRecords: weightRecords as unknown as Array<Record<string, unknown>>,
       bodyMeasurements: bodyMeasurements as unknown as Array<Record<string, unknown>>,
+      trips: trips as unknown as Array<Record<string, unknown>>,
+      tripSpots: tripSpots as unknown as Array<Record<string, unknown>>,
     },
   }
 
@@ -74,10 +80,12 @@ export async function pullData(
   const plain: PlainData = JSON.parse(plaintext)
 
   // Clear local and write remote data
-  await db.transaction('rw', db.kv, db.weightRecords, db.bodyMeasurements, async () => {
+  await db.transaction('rw', [db.kv, db.weightRecords, db.bodyMeasurements, db.trips, db.tripSpots], async () => {
     await db.kv.clear()
     await db.weightRecords.clear()
     await db.bodyMeasurements.clear()
+    await db.trips.clear()
+    await db.tripSpots.clear()
 
     if (plain.tables.kv?.length) {
       await db.kv.bulkPut(plain.tables.kv)
@@ -87,6 +95,12 @@ export async function pullData(
     }
     if (plain.tables.bodyMeasurements?.length) {
       await db.bodyMeasurements.bulkPut(plain.tables.bodyMeasurements as never[])
+    }
+    if (plain.tables.trips?.length) {
+      await db.trips.bulkPut(plain.tables.trips as never[])
+    }
+    if (plain.tables.tripSpots?.length) {
+      await db.tripSpots.bulkPut(plain.tables.tripSpots as never[])
     }
   })
 

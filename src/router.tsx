@@ -1,9 +1,10 @@
 import React from 'react'
 import type { RouteObject } from 'react-router-dom'
-import { HomeOutlined, HeartOutlined } from '@ant-design/icons'
+import { HomeOutlined, HeartOutlined, EnvironmentOutlined } from '@ant-design/icons'
 
 const Home = React.lazy(() => import('./modules/home'))
 const BodyManagement = React.lazy(() => import('./modules/body-management'))
+const Travel = React.lazy(() => import('./modules/travel'))
 
 export type RouteConfig = RouteObject & {
   /** 侧边栏显示名称，不设则不显示在菜单中 */
@@ -37,5 +38,15 @@ export const routes: RouteConfig[] = [
     ),
     label: '身材管理',
     icon: <HeartOutlined />,
+  },
+  {
+    path: '/travel',
+    element: (
+      <React.Suspense fallback={null}>
+        <Travel />
+      </React.Suspense>
+    ),
+    label: '旅行足迹',
+    icon: <EnvironmentOutlined />,
   },
 ]

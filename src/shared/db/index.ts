@@ -30,10 +30,41 @@ export interface BodyMeasurement {
   createdAt: number // timestamp
 }
 
+export interface Trip {
+  id: number
+  title: string
+  destination: string
+  startDate: string // "YYYY-MM-DD"
+  endDate: string // "YYYY-MM-DD"
+  coverPhoto?: string // base64 data URL
+  summary?: string
+  tags: string[]
+  rating?: number // 1-5
+  totalCost?: number
+  createdAt: number
+}
+
+export interface TripSpot {
+  id: number
+  tripId: number
+  name: string
+  date: string // "YYYY-MM-DD"
+  lat?: number
+  lng?: number
+  address?: string
+  photos: string[] // base64 data URLs
+  note?: string
+  cost?: number
+  sortOrder: number
+  createdAt: number
+}
+
 export type AppDb = Dexie & {
   kv: EntityTable<KVItem, 'key'>
   weightRecords: EntityTable<WeightRecord, 'id'>
   bodyMeasurements: EntityTable<BodyMeasurement, 'id'>
+  trips: EntityTable<Trip, 'id'>
+  tripSpots: EntityTable<TripSpot, 'id'>
 }
 
 export function createDb(username: string): AppDb {
@@ -52,6 +83,14 @@ export function createDb(username: string): AppDb {
     kv: 'key',
     weightRecords: '++id, date, createdAt',
     bodyMeasurements: '++id, date, createdAt',
+  })
+
+  db.version(4).stores({
+    kv: 'key',
+    weightRecords: '++id, date, createdAt',
+    bodyMeasurements: '++id, date, createdAt',
+    trips: '++id, startDate, createdAt',
+    tripSpots: '++id, tripId, date, createdAt',
   })
 
   return db
