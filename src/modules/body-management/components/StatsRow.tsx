@@ -119,7 +119,7 @@ export default function StatsRow({ records, allRecords }: Props) {
               precision={1}
               suffix="kg"
               valueStyle={{ color: gap <= 0 ? colorSuccess : colorError, fontSize: 20 }}
-              prefix={gap > 0 ? '+' : gap < 0 ? '-' : ''}
+              prefix={gap > 0 ? '-' : gap < 0 ? '+' : ''}
             />
           </Card>
         </Col>
