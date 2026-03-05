@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { useDb } from '@/shared/db/context'
 import type { WeightRecord } from '@/shared/db'
 import { useBodyStore } from '../store'
-import { calculateBMI } from '../utils'
+import { calculateBMI, detectPeriod } from '../utils'
 
 const { useBreakpoint } = Grid
 
@@ -19,6 +19,7 @@ interface FormValues {
   date: dayjs.Dayjs
   period: WeightRecord['period']
   weight: number
+  bodyFat?: number
   note?: string
 }
 
@@ -35,6 +36,11 @@ export default function WeightForm({ onDataChanged }: Props) {
   const screens = useBreakpoint()
   const isMobile = !screens.md
   const db = useDb()
+
+  const resetForm = () => {
+    form.resetFields()
+    form.setFieldsValue({ date: dayjs(), period: detectPeriod() })
+  }
 
   const handleSubmit = async (values: FormValues) => {
     if (submitting) return
@@ -60,11 +66,11 @@ export default function WeightForm({ onDataChanged }: Props) {
           await db.weightRecords.update(existing.id, {
             weight,
             bmi,
+            bodyFat: values.bodyFat ?? undefined,
             note: values.note || undefined,
           })
           onDataChanged()
-          form.resetFields()
-          form.setFieldsValue({ date: dayjs(), period: 'morning' })
+          resetForm()
         },
         afterClose: () => setSubmitting(false),
       })
@@ -76,13 +82,13 @@ export default function WeightForm({ onDataChanged }: Props) {
       period: values.period,
       weight,
       bmi,
+      bodyFat: values.bodyFat ?? undefined,
       note: values.note || undefined,
       createdAt: Date.now(),
     })
 
     onDataChanged()
-    form.resetFields()
-    form.setFieldsValue({ date: dayjs(), period: 'morning' })
+    resetForm()
     setSubmitting(false)
   }
 
@@ -92,7 +98,7 @@ export default function WeightForm({ onDataChanged }: Props) {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
-        initialValues={{ date: dayjs(), period: 'morning' }}
+        initialValues={{ date: dayjs(), period: detectPeriod() }}
         style={{ marginBottom: 16 }}
       >
         <div style={{ display: 'flex', gap: 8 }}>
@@ -103,9 +109,14 @@ export default function WeightForm({ onDataChanged }: Props) {
             <Select options={periodOptions} />
           </Form.Item>
         </div>
-        <Form.Item name="weight" rules={[{ required: true, message: '请输入体重' }]} style={{ marginBottom: 8 }}>
-          <InputNumber min={20} max={300} step={0.1} precision={1} placeholder="体重 kg" style={{ width: '100%' }} />
-        </Form.Item>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Form.Item name="weight" rules={[{ required: true, message: '请输入体重' }]} style={{ flex: 1, marginBottom: 8 }}>
+            <InputNumber min={20} max={300} step={0.1} precision={1} placeholder="体重 kg" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="bodyFat" style={{ flex: 1, marginBottom: 8 }}>
+            <InputNumber min={1} max={60} step={0.1} precision={1} placeholder="体脂率 %（可选）" style={{ width: '100%' }} />
+          </Form.Item>
+        </div>
         <Form.Item name="note" style={{ marginBottom: 8 }}>
           <Input placeholder="备注（可选）" />
         </Form.Item>
@@ -121,7 +132,7 @@ export default function WeightForm({ onDataChanged }: Props) {
       form={form}
       layout="inline"
       onFinish={handleSubmit}
-      initialValues={{ date: dayjs(), period: 'morning' }}
+      initialValues={{ date: dayjs(), period: detectPeriod() }}
       style={{ marginBottom: 16, flexWrap: 'wrap', gap: 8 }}
     >
       <Form.Item name="date" rules={[{ required: true }]}>
@@ -132,6 +143,9 @@ export default function WeightForm({ onDataChanged }: Props) {
       </Form.Item>
       <Form.Item name="weight" rules={[{ required: true, message: '请输入体重' }]}>
         <InputNumber min={20} max={300} step={0.1} precision={1} placeholder="体重 kg" style={{ width: 120 }} />
+      </Form.Item>
+      <Form.Item name="bodyFat">
+        <InputNumber min={1} max={60} step={0.1} precision={1} placeholder="体脂 %" style={{ width: 100 }} />
       </Form.Item>
       <Form.Item name="note">
         <Input placeholder="备注（可选）" style={{ width: 140 }} />

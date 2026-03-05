@@ -11,6 +11,8 @@ import WeightChart from './components/WeightChart'
 import WeightTable from './components/WeightTable'
 import StatsRow from './components/StatsRow'
 import GoalSetting from './components/GoalSetting'
+import MeasurementForm from './components/MeasurementForm'
+import MeasurementChart from './components/MeasurementChart'
 
 type PeriodFilter = 'all' | 'morning' | 'evening'
 type RangeFilter = 7 | 30 | 90 | 0
@@ -47,6 +49,11 @@ export default function BodyManagement() {
     [db],
   ) ?? []
 
+  const measurements = useLiveQuery(() =>
+    db.bodyMeasurements.orderBy('createdAt').toArray(),
+    [db],
+  ) ?? []
+
   const filteredRecords = useMemo(() => {
     let result = records
     if (periodFilter !== 'all') {
@@ -58,6 +65,14 @@ export default function BodyManagement() {
     }
     return result
   }, [records, periodFilter, rangeFilter])
+
+  const filteredMeasurements = useMemo(() => {
+    if (rangeFilter > 0) {
+      const cutoff = dayjs().subtract(rangeFilter, 'day').format('YYYY-MM-DD')
+      return measurements.filter((r) => r.date >= cutoff)
+    }
+    return measurements
+  }, [measurements, rangeFilter])
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -85,15 +100,25 @@ export default function BodyManagement() {
         />
       </div>
 
-      <StatsRow records={filteredRecords} />
+      <StatsRow records={filteredRecords} allRecords={records} />
 
       <Tabs
         defaultActiveKey="chart"
         items={[
           {
             key: 'chart',
-            label: '趋势图',
-            children: <WeightChart records={filteredRecords} />,
+            label: '体重趋势',
+            children: <WeightChart records={filteredRecords} periodFilter={periodFilter} />,
+          },
+          {
+            key: 'measurement',
+            label: '围度趋势',
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <MeasurementForm onDataChanged={notifyChanged} />
+                <MeasurementChart records={filteredMeasurements} />
+              </Space>
+            ),
           },
           {
             key: 'table',

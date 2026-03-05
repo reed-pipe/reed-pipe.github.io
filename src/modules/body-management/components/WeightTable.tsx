@@ -27,6 +27,7 @@ interface EditFormValues {
   date: dayjs.Dayjs
   period: WeightRecord['period']
   weight: number
+  bodyFat?: number
   note?: string
 }
 
@@ -65,6 +66,7 @@ export default function WeightTable({ onDataChanged }: Props) {
       period: values.period,
       weight: values.weight,
       bmi,
+      bodyFat: values.bodyFat ?? undefined,
       note: values.note || undefined,
     })
     onDataChanged()
@@ -101,6 +103,11 @@ export default function WeightTable({ onDataChanged }: Props) {
       render: (v?: number) => (v != null ? v.toFixed(1) : '-'),
     },
     {
+      title: '体脂',
+      dataIndex: 'bodyFat',
+      render: (v?: number) => (v != null ? `${v}%` : '-'),
+    },
+    {
       title: '备注',
       dataIndex: 'note',
       render: (v?: string) => v || '-',
@@ -117,7 +124,7 @@ export default function WeightTable({ onDataChanged }: Props) {
   ]
 
   const mobileColumns = allColumns.filter(
-    (c) => !('dataIndex' in c && (c.dataIndex === 'bmi' || c.dataIndex === 'note')),
+    (c) => !('dataIndex' in c && (c.dataIndex === 'bmi' || c.dataIndex === 'note' || c.dataIndex === 'bodyFat')),
   )
 
   return (
@@ -148,6 +155,7 @@ export default function WeightTable({ onDataChanged }: Props) {
               date: dayjs(editingRecord.date),
               period: editingRecord.period,
               weight: editingRecord.weight,
+              bodyFat: editingRecord.bodyFat,
               note: editingRecord.note,
             })
           } else if (!open) {
@@ -164,6 +172,9 @@ export default function WeightTable({ onDataChanged }: Props) {
           </Form.Item>
           <Form.Item name="weight" label="体重 (kg)" rules={[{ required: true, message: '请输入体重' }]}>
             <InputNumber min={20} max={300} step={0.1} precision={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="bodyFat" label="体脂率 (%)">
+            <InputNumber min={1} max={60} step={0.1} precision={1} style={{ width: '100%' }} placeholder="可选" />
           </Form.Item>
           <Form.Item name="note" label="备注">
             <Input placeholder="备注（可选）" />

@@ -2,15 +2,23 @@ import { useMemo, useRef, useState, useCallback } from 'react'
 import { Empty, theme } from 'antd'
 import type { WeightRecord } from '@/shared/db'
 import { useBodyStore } from '../store'
+import { movingAverage } from '../utils'
 
 interface Props {
   records: WeightRecord[]
+  periodFilter: 'all' | 'morning' | 'evening'
 }
 
 const PADDING = { top: 28, right: 48, bottom: 32, left: 48 }
 const SVG_HEIGHT = 260
+const MA_WINDOW = 7
 
-/** 生成"好看"的 Y 轴刻度：对齐到 0.5 / 1 / 2 / 5 的整数倍 */
+const COLORS = {
+  morning: '#1677ff',
+  evening: '#fa8c16',
+}
+
+/** 生成"好看"的 Y 轴刻度 */
 function niceYTicks(min: number, max: number, targetCount = 5): number[] {
   const rawStep = (max - min) / targetCount
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)))
@@ -20,7 +28,6 @@ function niceYTicks(min: number, max: number, targetCount = 5): number[] {
   else if (residual <= 2) niceStep = 2 * magnitude
   else if (residual <= 5) niceStep = 5 * magnitude
   else niceStep = 10 * magnitude
-  // 确保最小步长 0.5
   if (niceStep < 0.5) niceStep = 0.5
 
   const niceMin = Math.floor(min / niceStep) * niceStep
@@ -32,7 +39,9 @@ function niceYTicks(min: number, max: number, targetCount = 5): number[] {
   return ticks
 }
 
-export default function WeightChart({ records }: Props) {
+const periodLabel = (p: string) => (p === 'morning' ? '早晨' : p === 'evening' ? '晚上' : '其他')
+
+export default function WeightChart({ records, periodFilter }: Props) {
   const goalWeight = useBodyStore((s) => s.goalWeight)
   const {
     token: { colorPrimary, colorError, colorTextSecondary, colorBorderSecondary },
@@ -40,9 +49,25 @@ export default function WeightChart({ records }: Props) {
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // 按日期排序，提取唯一日期作为 X 轴
   const sorted = useMemo(
-    () => [...records].sort((a, b) => a.createdAt - b.createdAt),
+    () => [...records].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt),
     [records],
+  )
+  const uniqueDates = useMemo(
+    () => [...new Set(sorted.map((r) => r.date))].sort(),
+    [sorted],
+  )
+
+  // 双线模式：筛选全部时分早晚两条线
+  const isDualLine = periodFilter === 'all'
+  const morningRecords = useMemo(
+    () => isDualLine ? sorted.filter((r) => r.period === 'morning') : [],
+    [sorted, isDualLine],
+  )
+  const eveningRecords = useMemo(
+    () => isDualLine ? sorted.filter((r) => r.period === 'evening') : [],
+    [sorted, isDualLine],
   )
 
   // 容器宽度自适应
@@ -74,35 +99,63 @@ export default function WeightChart({ records }: Props) {
   const yMax = yTicks[yTicks.length - 1]!
   const yRange = yMax - yMin || 1
 
-  // 自适应：数据量少时撑满容器，数据多时允许滚动但间距不低于 28px
+  // 自适应间距
+  const dateCount = uniqueDates.length
   const MIN_POINT_GAP = 28
   const plotW_container = containerWidth - PADDING.left - PADDING.right
-  const naturalGap = sorted.length > 1 ? plotW_container / (sorted.length - 1) : plotW_container
-  const needsScroll = naturalGap < MIN_POINT_GAP && sorted.length > 1
+  const naturalGap = dateCount > 1 ? plotW_container / (dateCount - 1) : plotW_container
+  const needsScroll = naturalGap < MIN_POINT_GAP && dateCount > 1
   const chartWidth = needsScroll
-    ? PADDING.left + PADDING.right + (sorted.length - 1) * MIN_POINT_GAP
+    ? PADDING.left + PADDING.right + (dateCount - 1) * MIN_POINT_GAP
     : containerWidth
   const plotW = chartWidth - PADDING.left - PADDING.right
   const plotH = SVG_HEIGHT - PADDING.top - PADDING.bottom
 
-  const toX = (i: number) => PADDING.left + (sorted.length === 1 ? plotW / 2 : (i / (sorted.length - 1)) * plotW)
+  const dateIdx = new Map(uniqueDates.map((d, i) => [d, i]))
+  const toX = (date: string) => {
+    const idx = dateIdx.get(date) ?? 0
+    return PADDING.left + (dateCount === 1 ? plotW / 2 : (idx / (dateCount - 1)) * plotW)
+  }
   const toY = (w: number) => PADDING.top + plotH - ((w - yMin) / yRange) * plotH
 
-  const linePoints = sorted.map((r, i) => `${toX(i)},${toY(r.weight)}`).join(' ')
-  // 面积填充的路径：折线 → 右下 → 左下 → 闭合
-  const areaPath = sorted.length > 0
-    ? `M${toX(0)},${toY(sorted[0]!.weight)} ` +
-      sorted.slice(1).map((r, i) => `L${toX(i + 1)},${toY(r.weight)}`).join(' ') +
-      ` L${toX(sorted.length - 1)},${PADDING.top + plotH} L${toX(0)},${PADDING.top + plotH} Z`
-    : ''
+  // 生成折线 + 面积路径
+  const buildPaths = (recs: WeightRecord[]) => {
+    if (recs.length === 0) return { line: '', area: '' }
+    // 每个日期取最后一条记录
+    const byDate = new Map<string, WeightRecord>()
+    for (const r of recs) byDate.set(r.date, r)
+    const pts = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b))
+    const line = pts.map(([d, r]) => `${toX(d)},${toY(r.weight)}`).join(' ')
+    const first = pts[0]!
+    const last = pts[pts.length - 1]!
+    const area = `M${toX(first[0])},${toY(first[1].weight)} ` +
+      pts.slice(1).map(([d, r]) => `L${toX(d)},${toY(r.weight)}`).join(' ') +
+      ` L${toX(last[0])},${PADDING.top + plotH} L${toX(first[0])},${PADDING.top + plotH} Z`
+    return { line, area, pts }
+  }
 
-  const periodLabel = (p: string) => (p === 'morning' ? '早晨' : p === 'evening' ? '晚上' : '其他')
+  // 移动平均
+  const buildMA = (recs: WeightRecord[]) => {
+    const byDate = new Map<string, WeightRecord>()
+    for (const r of recs) byDate.set(r.date, r)
+    const pts = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b))
+    const data = pts.map(([d, r]) => ({ x: toX(d), y: r.weight }))
+    const ma = movingAverage(data, MA_WINDOW)
+    if (ma.length === 0) return ''
+    return ma.map((p) => `${p.x},${toY(p.y)}`).join(' ')
+  }
 
-  // 最新数据点
-  const lastIdx = sorted.length - 1
-  const lastRecord = sorted[lastIdx]
+  // 单线模式数据
+  const singlePaths = !isDualLine ? buildPaths(sorted) : null
+  const singleMA = !isDualLine ? buildMA(sorted) : null
 
-  // 触摸 / 鼠标查找最近数据点
+  // 双线模式数据
+  const mPaths = isDualLine ? buildPaths(morningRecords) : null
+  const ePaths = isDualLine ? buildPaths(eveningRecords) : null
+  const mMA = isDualLine ? buildMA(morningRecords) : null
+  const eMA = isDualLine ? buildMA(eveningRecords) : null
+
+  // 触摸 / 鼠标交互 — 找最近日期
   const handleInteraction = (clientX: number) => {
     const container = containerRef.current
     if (!container) return
@@ -110,8 +163,9 @@ export default function WeightChart({ records }: Props) {
     const x = clientX - rect.left + container.scrollLeft
     let closest = 0
     let minDist = Infinity
-    for (let i = 0; i < sorted.length; i++) {
-      const dist = Math.abs(toX(i) - x)
+    for (let i = 0; i < uniqueDates.length; i++) {
+      const dx = toX(uniqueDates[i]!)
+      const dist = Math.abs(dx - x)
       if (dist < minDist) {
         minDist = dist
         closest = i
@@ -120,12 +174,16 @@ export default function WeightChart({ records }: Props) {
     setActiveIdx(closest)
   }
 
-  const activeRecord = activeIdx !== null ? sorted[activeIdx] : undefined
+  const activeDate = activeIdx !== null ? uniqueDates[activeIdx] : undefined
+  const activeRecords = activeDate ? sorted.filter((r) => r.date === activeDate) : []
 
-  // X 轴标签间隔：确保标签不重叠
+  // 最新记录（用于标注）
+  const lastRecord = sorted[sorted.length - 1]!
+
+  // X 轴标签智能间隔
   const labelWidth = 42
   const maxLabels = Math.max(2, Math.floor(plotW / labelWidth))
-  const labelInterval = Math.max(1, Math.ceil(sorted.length / maxLabels))
+  const labelInterval = Math.max(1, Math.ceil(dateCount / maxLabels))
 
   return (
     <div
@@ -145,49 +203,36 @@ export default function WeightChart({ records }: Props) {
         onMouseLeave={() => setActiveIdx(null)}
       >
         <defs>
-          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={colorPrimary} stopOpacity={0.25} />
+          <linearGradient id="areaGradPrimary" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colorPrimary} stopOpacity={0.2} />
             <stop offset="100%" stopColor={colorPrimary} stopOpacity={0.02} />
+          </linearGradient>
+          <linearGradient id="areaGradMorning" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={COLORS.morning} stopOpacity={0.15} />
+            <stop offset="100%" stopColor={COLORS.morning} stopOpacity={0.02} />
+          </linearGradient>
+          <linearGradient id="areaGradEvening" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={COLORS.evening} stopOpacity={0.15} />
+            <stop offset="100%" stopColor={COLORS.evening} stopOpacity={0.02} />
           </linearGradient>
         </defs>
 
-        {/* Y 轴刻度线 + 标签 */}
+        {/* Y 轴刻度 */}
         {yTicks.map((v) => (
           <g key={v}>
-            <line
-              x1={PADDING.left}
-              y1={toY(v)}
-              x2={chartWidth - PADDING.right}
-              y2={toY(v)}
-              stroke={colorBorderSecondary}
-              strokeDasharray="4 2"
-            />
-            <text
-              x={PADDING.left - 8}
-              y={toY(v)}
-              textAnchor="end"
-              dominantBaseline="middle"
-              fontSize={11}
-              fill={colorTextSecondary}
-            >
+            <line x1={PADDING.left} y1={toY(v)} x2={chartWidth - PADDING.right} y2={toY(v)} stroke={colorBorderSecondary} strokeDasharray="4 2" />
+            <text x={PADDING.left - 8} y={toY(v)} textAnchor="end" dominantBaseline="middle" fontSize={11} fill={colorTextSecondary}>
               {v % 1 === 0 ? v : v.toFixed(1)}
             </text>
           </g>
         ))}
 
-        {/* X 轴日期标签 */}
-        {sorted.map((r, i) => {
-          if (i % labelInterval !== 0 && i !== lastIdx) return null
+        {/* X 轴日期 */}
+        {uniqueDates.map((d, i) => {
+          if (i % labelInterval !== 0 && i !== dateCount - 1) return null
           return (
-            <text
-              key={r.id}
-              x={toX(i)}
-              y={SVG_HEIGHT - 8}
-              textAnchor="middle"
-              fontSize={10}
-              fill={colorTextSecondary}
-            >
-              {r.date.slice(5)}
+            <text key={d} x={toX(d)} y={SVG_HEIGHT - 8} textAnchor="middle" fontSize={10} fill={colorTextSecondary}>
+              {d.slice(5)}
             </text>
           )
         })}
@@ -195,72 +240,83 @@ export default function WeightChart({ records }: Props) {
         {/* 目标线 */}
         {goalWeight !== null && (
           <>
-            <line
-              x1={PADDING.left}
-              y1={toY(goalWeight)}
-              x2={chartWidth - PADDING.right}
-              y2={toY(goalWeight)}
-              stroke={colorError}
-              strokeWidth={1.5}
-              strokeDasharray="6 3"
-            />
-            <text
-              x={chartWidth - PADDING.right + 4}
-              y={toY(goalWeight)}
-              dominantBaseline="middle"
-              fontSize={11}
-              fill={colorError}
-            >
-              目标
-            </text>
+            <line x1={PADDING.left} y1={toY(goalWeight)} x2={chartWidth - PADDING.right} y2={toY(goalWeight)} stroke={colorError} strokeWidth={1.5} strokeDasharray="6 3" />
+            <text x={chartWidth - PADDING.right + 4} y={toY(goalWeight)} dominantBaseline="middle" fontSize={11} fill={colorError}>目标</text>
           </>
         )}
 
-        {/* 渐变面积填充 */}
-        <path d={areaPath} fill="url(#areaGradient)" />
+        {/* --- 单线模式 --- */}
+        {!isDualLine && singlePaths && (
+          <>
+            <path d={singlePaths.area} fill="url(#areaGradPrimary)" />
+            <polyline fill="none" stroke={colorPrimary} strokeWidth={2} strokeLinejoin="round" points={singlePaths.line} />
+            {singleMA && <polyline fill="none" stroke={colorPrimary} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.5} points={singleMA} />}
+          </>
+        )}
 
-        {/* 折线 */}
-        <polyline
-          fill="none"
-          stroke={colorPrimary}
-          strokeWidth={2}
-          strokeLinejoin="round"
-          points={linePoints}
-        />
+        {/* --- 双线模式 --- */}
+        {isDualLine && (
+          <>
+            {/* 早晨线 */}
+            {mPaths && mPaths.area && (
+              <>
+                <path d={mPaths.area} fill="url(#areaGradMorning)" />
+                <polyline fill="none" stroke={COLORS.morning} strokeWidth={2} strokeLinejoin="round" points={mPaths.line} />
+                {mMA && <polyline fill="none" stroke={COLORS.morning} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.5} points={mMA} />}
+              </>
+            )}
+            {/* 晚上线 */}
+            {ePaths && ePaths.area && (
+              <>
+                <path d={ePaths.area} fill="url(#areaGradEvening)" />
+                <polyline fill="none" stroke={COLORS.evening} strokeWidth={2} strokeLinejoin="round" points={ePaths.line} />
+                {eMA && <polyline fill="none" stroke={COLORS.evening} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.5} points={eMA} />}
+              </>
+            )}
+          </>
+        )}
 
         {/* 数据点 */}
-        {sorted.map((r, i) => (
-          <circle
-            key={r.id}
-            cx={toX(i)}
-            cy={toY(r.weight)}
-            r={activeIdx === i ? 6 : i === lastIdx ? 5 : 3.5}
-            fill={activeIdx === i ? colorError : i === lastIdx ? colorPrimary : colorPrimary}
-            stroke="#fff"
-            strokeWidth={activeIdx === i || i === lastIdx ? 2 : 1.5}
-          />
-        ))}
+        {sorted.map((r) => {
+          const isActive = activeDate === r.date
+          const color = isDualLine
+            ? (r.period === 'morning' ? COLORS.morning : r.period === 'evening' ? COLORS.evening : colorPrimary)
+            : colorPrimary
+          return (
+            <circle
+              key={r.id}
+              cx={toX(r.date)}
+              cy={toY(r.weight)}
+              r={isActive ? 6 : r === lastRecord ? 5 : 3.5}
+              fill={isActive ? colorError : color}
+              stroke="#fff"
+              strokeWidth={isActive || r === lastRecord ? 2 : 1.5}
+            />
+          )
+        })}
 
         {/* 最新值标注 */}
-        {activeIdx === null && lastRecord && (
+        {activeIdx === null && (
           <text
-            x={toX(lastIdx) + 8}
+            x={toX(lastRecord.date) + 8}
             y={toY(lastRecord.weight)}
             dominantBaseline="middle"
             fontSize={12}
             fontWeight={600}
-            fill={colorPrimary}
+            fill={isDualLine
+              ? (lastRecord.period === 'morning' ? COLORS.morning : COLORS.evening)
+              : colorPrimary}
           >
             {lastRecord.weight}
           </text>
         )}
 
-        {/* 激活点竖线指示器 */}
-        {activeIdx !== null && (
+        {/* 激活竖线 */}
+        {activeDate && (
           <line
-            x1={toX(activeIdx)}
+            x1={toX(activeDate)}
             y1={PADDING.top}
-            x2={toX(activeIdx)}
+            x2={toX(activeDate)}
             y2={SVG_HEIGHT - PADDING.bottom}
             stroke={colorTextSecondary}
             strokeWidth={1}
@@ -268,10 +324,38 @@ export default function WeightChart({ records }: Props) {
             opacity={0.5}
           />
         )}
+
+        {/* 图例（双线模式） */}
+        {isDualLine && (morningRecords.length > 0 || eveningRecords.length > 0) && (
+          <g>
+            {morningRecords.length > 0 && (
+              <>
+                <line x1={PADDING.left} y1={12} x2={PADDING.left + 16} y2={12} stroke={COLORS.morning} strokeWidth={2} />
+                <text x={PADDING.left + 20} y={12} dominantBaseline="middle" fontSize={11} fill={colorTextSecondary}>早晨</text>
+              </>
+            )}
+            {eveningRecords.length > 0 && (
+              <>
+                <line x1={PADDING.left + 60} y1={12} x2={PADDING.left + 76} y2={12} stroke={COLORS.evening} strokeWidth={2} />
+                <text x={PADDING.left + 80} y={12} dominantBaseline="middle" fontSize={11} fill={colorTextSecondary}>晚上</text>
+              </>
+            )}
+            <line x1={PADDING.left + 120} y1={12} x2={PADDING.left + 136} y2={12} stroke={colorTextSecondary} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.5} />
+            <text x={PADDING.left + 140} y={12} dominantBaseline="middle" fontSize={11} fill={colorTextSecondary}>7日均线</text>
+          </g>
+        )}
+
+        {/* 图例（单线模式，有移动平均时显示） */}
+        {!isDualLine && singleMA && (
+          <g>
+            <line x1={PADDING.left} y1={12} x2={PADDING.left + 16} y2={12} stroke={colorPrimary} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.5} />
+            <text x={PADDING.left + 20} y={12} dominantBaseline="middle" fontSize={11} fill={colorTextSecondary}>7日均线</text>
+          </g>
+        )}
       </svg>
 
       {/* 悬浮信息 */}
-      {activeRecord && (
+      {activeRecords.length > 0 && (
         <div
           style={{
             padding: '6px 12px',
@@ -281,10 +365,17 @@ export default function WeightChart({ records }: Props) {
             borderTop: `1px solid ${colorBorderSecondary}`,
           }}
         >
-          {activeRecord.date} {periodLabel(activeRecord.period)}
-          {' · '}
-          <strong>{activeRecord.weight} kg</strong>
-          {activeRecord.bmi != null && ` · BMI ${activeRecord.bmi}`}
+          {activeRecords.map((r, i) => (
+            <span key={r.id}>
+              {i > 0 && ' ｜ '}
+              {isDualLine && <span style={{ color: r.period === 'morning' ? COLORS.morning : COLORS.evening }}>{periodLabel(r.period)}</span>}
+              {isDualLine && ' '}
+              <strong>{r.weight} kg</strong>
+              {r.bmi != null && ` BMI ${r.bmi}`}
+              {r.bodyFat != null && ` 体脂 ${r.bodyFat}%`}
+            </span>
+          ))}
+          <span style={{ marginLeft: 8 }}>{activeDate}</span>
         </div>
       )}
     </div>

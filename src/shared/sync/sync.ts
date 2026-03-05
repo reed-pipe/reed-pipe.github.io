@@ -15,6 +15,7 @@ interface PlainData {
   tables: {
     kv: Array<{ key: string; value: unknown }>
     weightRecords: Array<Record<string, unknown>>
+    bodyMeasurements?: Array<Record<string, unknown>>
   }
 }
 
@@ -23,9 +24,10 @@ export async function pushData(
   key: CryptoKey,
   dataGistId: string,
 ): Promise<void> {
-  const [kvItems, weightRecords] = await Promise.all([
+  const [kvItems, weightRecords, bodyMeasurements] = await Promise.all([
     db.kv.toArray(),
     db.weightRecords.toArray(),
+    db.bodyMeasurements.toArray(),
   ])
 
   const plain: PlainData = {
@@ -33,6 +35,7 @@ export async function pushData(
     tables: {
       kv: kvItems.map((item) => ({ key: item.key, value: item.value })),
       weightRecords: weightRecords as unknown as Array<Record<string, unknown>>,
+      bodyMeasurements: bodyMeasurements as unknown as Array<Record<string, unknown>>,
     },
   }
 
@@ -71,15 +74,19 @@ export async function pullData(
   const plain: PlainData = JSON.parse(plaintext)
 
   // Clear local and write remote data
-  await db.transaction('rw', db.kv, db.weightRecords, async () => {
+  await db.transaction('rw', db.kv, db.weightRecords, db.bodyMeasurements, async () => {
     await db.kv.clear()
     await db.weightRecords.clear()
+    await db.bodyMeasurements.clear()
 
     if (plain.tables.kv?.length) {
       await db.kv.bulkPut(plain.tables.kv)
     }
     if (plain.tables.weightRecords?.length) {
       await db.weightRecords.bulkPut(plain.tables.weightRecords as never[])
+    }
+    if (plain.tables.bodyMeasurements?.length) {
+      await db.bodyMeasurements.bulkPut(plain.tables.bodyMeasurements as never[])
     }
   })
 
