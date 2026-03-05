@@ -23,6 +23,7 @@ const metricOptions: { value: MetricKey; label: string }[] = [
 
 function niceYTicks(min: number, max: number, targetCount = 5): number[] {
   const rawStep = (max - min) / targetCount
+  if (rawStep <= 0) return [min]
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)))
   const residual = rawStep / magnitude
   let niceStep: number

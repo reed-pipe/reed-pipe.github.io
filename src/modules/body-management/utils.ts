@@ -8,6 +8,14 @@ export function calculateBMI(weight: number, heightCm: number): number {
   return +(weight / (heightCm / 100) ** 2).toFixed(1)
 }
 
+/** BMI 分类 */
+export function getBMICategory(bmi: number): { label: string; color: string } {
+  if (bmi < 18.5) return { label: '偏瘦', color: '#1890ff' }
+  if (bmi < 24) return { label: '正常', color: '#52c41a' }
+  if (bmi < 28) return { label: '超重', color: '#fa8c16' }
+  return { label: '肥胖', color: '#f5222d' }
+}
+
 /** 根据当前时间自动判断时段 */
 export function detectPeriod(): 'morning' | 'evening' {
   return new Date().getHours() < 14 ? 'morning' : 'evening'
@@ -55,7 +63,9 @@ export function predictDaysToGoal(
   const sumXY = xs.reduce((a, x, i) => a + x * ys[i]!, 0)
   const sumX2 = xs.reduce((a, x) => a + x * x, 0)
 
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+  const denominator = n * sumX2 - sumX * sumX
+  if (Math.abs(denominator) < 1e-10) return null
+  const slope = (n * sumXY - sumX * sumY) / denominator
   if (Math.abs(slope) < 0.001) return null // 趋势平坦
 
   const latestWeight = ys[ys.length - 1]!

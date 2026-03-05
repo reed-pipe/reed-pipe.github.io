@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons'
 import type { WeightRecord } from '@/shared/db'
 import { useBodyStore } from '../store'
-import { calculateStreak, predictDaysToGoal } from '../utils'
+import { calculateStreak, predictDaysToGoal, getBMICategory } from '../utils'
 
 interface Props {
   records: WeightRecord[]
@@ -81,18 +81,27 @@ export default function StatsRow({ records, allRecords }: Props) {
           <Statistic title="最重" value={max} suffix="kg" precision={1} valueStyle={{ fontSize: 20 }} />
         </Card>
       </Col>
-      {latest.bmi != null && (
-        <Col {...colSpan}>
-          <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
-            <Statistic title="BMI" value={latest.bmi} precision={1} valueStyle={{ fontSize: 20 }} />
-          </Card>
-        </Col>
-      )}
+      {latest.bmi != null && (() => {
+        const cat = getBMICategory(latest.bmi)
+        return (
+          <Col {...colSpan}>
+            <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+              <Statistic
+                title="BMI"
+                value={latest.bmi}
+                precision={1}
+                suffix={<span style={{ fontSize: 12, color: cat.color }}>{cat.label}</span>}
+                valueStyle={{ fontSize: 20, color: cat.color }}
+              />
+            </Card>
+          </Col>
+        )
+      })()}
       {weekTrend !== null && (
         <Col {...colSpan}>
           <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
             <Statistic
-              title="周趋势"
+              title={`周趋势 (${recent7.length}→${prev7.length}条)`}
               value={Math.abs(weekTrend)}
               precision={1}
               suffix="kg"

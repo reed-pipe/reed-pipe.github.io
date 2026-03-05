@@ -7,12 +7,13 @@ import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import { useBodyStore } from './store'
 import WeightForm from './components/WeightForm'
-import WeightChart from './components/WeightChart'
+import WeightChart, { type DataType } from './components/WeightChart'
 import WeightTable from './components/WeightTable'
 import StatsRow from './components/StatsRow'
 import GoalSetting from './components/GoalSetting'
 import MeasurementForm from './components/MeasurementForm'
 import MeasurementChart from './components/MeasurementChart'
+import CalendarHeatmap from './components/CalendarHeatmap'
 
 type PeriodFilter = 'all' | 'morning' | 'evening'
 type RangeFilter = 7 | 30 | 90 | 0
@@ -30,10 +31,17 @@ const rangeFilterOptions = [
   { value: 0, label: '全部' },
 ]
 
+const dataTypeOptions = [
+  { value: 'weight', label: '体重' },
+  { value: 'bodyFat', label: '体脂' },
+  { value: 'bmi', label: 'BMI' },
+]
+
 export default function BodyManagement() {
   const [settingOpen, setSettingOpen] = useState(false)
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all')
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>(30)
+  const [dataType, setDataType] = useState<DataType>('weight')
   const { loaded, load } = useBodyStore()
   const db = useDb()
   const notifyChanged = useDataChanged()
@@ -108,7 +116,18 @@ export default function BodyManagement() {
           {
             key: 'chart',
             label: '体重趋势',
-            children: <WeightChart records={filteredRecords} periodFilter={periodFilter} />,
+            children: (
+              <div>
+                <Segmented
+                  size="small"
+                  options={dataTypeOptions}
+                  value={dataType}
+                  onChange={(v) => setDataType(v as DataType)}
+                  style={{ marginBottom: 12 }}
+                />
+                <WeightChart records={filteredRecords} periodFilter={periodFilter} dataType={dataType} />
+              </div>
+            ),
           },
           {
             key: 'measurement',
@@ -119,6 +138,11 @@ export default function BodyManagement() {
                 <MeasurementChart records={filteredMeasurements} />
               </Space>
             ),
+          },
+          {
+            key: 'heatmap',
+            label: '日历',
+            children: <CalendarHeatmap records={records} />,
           },
           {
             key: 'table',

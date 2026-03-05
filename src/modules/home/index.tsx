@@ -1,37 +1,221 @@
-import { Typography, Card, Space } from 'antd'
-import { RocketOutlined } from '@ant-design/icons'
+import { useState, useMemo } from 'react'
+import { Card, Space, Typography, Progress, InputNumber, Button, Grid, message, theme } from 'antd'
+import { HeartOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, FireOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
+import dayjs from 'dayjs'
+import { useDb } from '@/shared/db/context'
+import { useDataChanged } from '@/shared/sync/useDataChanged'
 
-const { Title, Paragraph } = Typography
+const { Text } = Typography
+const { useBreakpoint } = Grid
+
+/** 迷你折线图（纯 SVG） */
+function MiniSparkline({ values, color, width = 140, height = 40 }: { values: number[]; color: string; width?: number; height?: number }) {
+  if (values.length < 2) return null
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const pad = 2
+  const points = values.map((v, i) =>
+    `${pad + (i / (values.length - 1)) * (width - pad * 2)},${pad + (1 - (v - min) / range) * (height - pad * 2)}`,
+  ).join(' ')
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <polyline fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" points={points} />
+    </svg>
+  )
+}
 
 export default function Home() {
-  return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Typography>
-        <Title level={2}>
-          <RocketOutlined style={{ marginRight: 8 }} />
-          欢迎使用个人助手
-        </Title>
-        <Paragraph>
-          这是一个模块化的个人工具集，你可以通过左侧导航切换不同的功能模块。
-        </Paragraph>
-      </Typography>
+  const db = useDb()
+  const navigate = useNavigate()
+  const notifyChanged = useDataChanged()
+  const screens = useBreakpoint()
+  const isMobile = !screens.md
+  const { token: { colorPrimary, colorSuccess, colorError, colorWarning } } = theme.useToken()
 
-      <Card title="快速开始" variant="borderless">
-        <Paragraph>
-          要添加新功能模块，只需：
-        </Paragraph>
-        <ol>
-          <li>
-            在 <code>src/modules/</code> 下新建目录
-          </li>
-          <li>
-            创建 <code>index.tsx</code> 导出页面组件
-          </li>
-          <li>
-            在 <code>src/router.tsx</code> 添加路由配置
-          </li>
-        </ol>
-        <Paragraph>菜单会自动根据路由配置生成，无需手动修改布局。</Paragraph>
+  const [quickWeight, setQuickWeight] = useState<number | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const records = useLiveQuery(() =>
+    db.weightRecords.orderBy('createdAt').toArray(),
+    [db],
+  ) ?? []
+
+  const heightVal = useLiveQuery(async () => {
+    const item = await db.kv.get('body_height')
+    return (item?.value as number) ?? null
+  }, [db])
+
+  const goalWeight = useLiveQuery(async () => {
+    const item = await db.kv.get('body_goalWeight')
+    return (item?.value as number) ?? null
+  }, [db])
+
+  const today = dayjs().format('YYYY-MM-DD')
+  const todayRecords = records.filter((r) => r.date === today)
+  const hasRecordToday = todayRecords.length > 0
+
+  const sorted = useMemo(
+    () => [...records].sort((a, b) => a.createdAt - b.createdAt),
+    [records],
+  )
+  const latest = sorted.length > 0 ? sorted[sorted.length - 1]! : null
+
+  // 近 14 条的体重做迷你折线
+  const sparkValues = useMemo(() => {
+    return sorted.slice(-14).map((r) => r.weight)
+  }, [sorted])
+
+  // 趋势：对比最近 2 条
+  const trend = sorted.length >= 2
+    ? +(sorted[sorted.length - 1]!.weight - sorted[sorted.length - 2]!.weight).toFixed(1)
+    : null
+
+  // 连续记录天数
+  const streak = useMemo(() => {
+    if (records.length === 0) return 0
+    const dates = new Set(records.map((r) => r.date))
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    let count = 0
+    for (; ; d.setDate(d.getDate() - 1)) {
+      const key = d.toISOString().slice(0, 10)
+      if (dates.has(key)) { count++ }
+      else { if (count === 0 && key === today) continue; break }
+    }
+    return count
+  }, [records, today])
+
+  // 目标进度
+  const progress = useMemo(() => {
+    if (goalWeight == null || latest == null || sorted.length < 2) return null
+    const first = sorted[0]!.weight
+    const current = latest.weight
+    const total = first - goalWeight
+    if (Math.abs(total) < 0.1) return null
+    const done = first - current
+    return Math.min(100, Math.max(0, Math.round((done / total) * 100)))
+  }, [goalWeight, latest, sorted])
+
+  const handleQuickSubmit = async () => {
+    if (!quickWeight || submitting) return
+    setSubmitting(true)
+    const period = new Date().getHours() < 14 ? 'morning' : 'evening'
+    const bmi = heightVal ? +(quickWeight / (heightVal / 100) ** 2).toFixed(1) : undefined
+
+    await db.weightRecords.add({
+      date: today,
+      period: period as 'morning' | 'evening',
+      weight: quickWeight,
+      bmi,
+      createdAt: Date.now(),
+    })
+    notifyChanged()
+    setQuickWeight(null)
+    setSubmitting(false)
+    message.success('记录成功')
+  }
+
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {/* 今日提醒 */}
+      {!hasRecordToday && records.length > 0 && (
+        <Card size="small" style={{ background: '#fffbe6', borderColor: '#ffe58f' }}>
+          <Text type="warning">今天还没有记录体重哦，记得称重~</Text>
+        </Card>
+      )}
+
+      {/* 身材概览 */}
+      <Card
+        hoverable
+        onClick={() => navigate('/body-management')}
+        styles={{ body: { padding: isMobile ? 16 : 20 } }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Space>
+            <HeartOutlined style={{ color: colorError, fontSize: 18 }} />
+            <Text strong style={{ fontSize: 16 }}>身材管理</Text>
+          </Space>
+          {streak > 0 && (
+            <Space size={4}>
+              <FireOutlined style={{ color: colorWarning }} />
+              <Text type="secondary" style={{ fontSize: 13 }}>连续 {streak} 天</Text>
+            </Space>
+          )}
+        </div>
+
+        {latest ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 24, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: colorPrimary, lineHeight: 1.2 }}>
+                {latest.weight}
+                <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 2 }}>kg</span>
+              </div>
+              {trend !== null && trend !== 0 && (
+                <div style={{ fontSize: 13, marginTop: 2 }}>
+                  {trend < 0 ? (
+                    <Text type="success"><ArrowDownOutlined /> {Math.abs(trend)}kg</Text>
+                  ) : (
+                    <Text type="danger"><ArrowUpOutlined /> +{trend}kg</Text>
+                  )}
+                  <Text type="secondary" style={{ marginLeft: 4 }}>vs 上次</Text>
+                </div>
+              )}
+              {latest.bmi != null && (
+                <Text type="secondary" style={{ fontSize: 12 }}>BMI {latest.bmi}</Text>
+              )}
+            </div>
+
+            <MiniSparkline values={sparkValues} color={colorPrimary} width={isMobile ? 120 : 160} height={44} />
+
+            {progress !== null && (
+              <div style={{ minWidth: 80 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>目标进度</Text>
+                <Progress
+                  percent={progress}
+                  size="small"
+                  strokeColor={progress >= 100 ? colorSuccess : colorPrimary}
+                  format={(p) => `${p}%`}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <Text type="secondary">暂无数据，点击前往记录</Text>
+        )}
+
+        {hasRecordToday && (
+          <div style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              <CheckCircleOutlined style={{ color: colorSuccess }} /> 今日已记录
+            </Text>
+          </div>
+        )}
+      </Card>
+
+      {/* 快捷录入 */}
+      <Card size="small" title="快捷录入" styles={{ body: { padding: '12px 16px' } }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <InputNumber
+            value={quickWeight}
+            onChange={(v) => setQuickWeight(v)}
+            min={20}
+            max={300}
+            step={0.1}
+            precision={1}
+            placeholder="体重 kg"
+            style={{ flex: 1 }}
+            onPressEnter={handleQuickSubmit}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleQuickSubmit} loading={submitting}>
+            记录
+          </Button>
+        </div>
+        <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+          自动记录为今天 {new Date().getHours() < 14 ? '早晨' : '晚上'}
+        </Text>
       </Card>
     </Space>
   )
