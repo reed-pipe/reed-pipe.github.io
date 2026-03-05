@@ -22,8 +22,10 @@ export interface BodyMeasurement {
   waist?: number // 腰围 cm
   hip?: number // 臀围 cm
   chest?: number // 胸围 cm
-  arm?: number // 臂围 cm
-  thigh?: number // 腿围 cm
+  leftArm?: number // 左臂围 cm
+  rightArm?: number // 右臂围 cm
+  leftThigh?: number // 左腿围 cm
+  rightThigh?: number // 右腿围 cm
   note?: string
   createdAt: number // timestamp
 }

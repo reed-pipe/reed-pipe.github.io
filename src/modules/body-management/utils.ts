@@ -107,7 +107,7 @@ export function exportWeightCSV(records: WeightRecord[]): string {
 
 /** 导出围度记录为 CSV */
 export function exportMeasurementCSV(records: BodyMeasurement[]): string {
-  const header = '日期,腰围(cm),臀围(cm),胸围(cm),臂围(cm),腿围(cm),备注'
+  const header = '日期,腰围(cm),臀围(cm),胸围(cm),左臂围(cm),右臂围(cm),左腿围(cm),右腿围(cm),备注'
   const rows = [...records]
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((r) =>
@@ -116,8 +116,10 @@ export function exportMeasurementCSV(records: BodyMeasurement[]): string {
         r.waist ?? '',
         r.hip ?? '',
         r.chest ?? '',
-        r.arm ?? '',
-        r.thigh ?? '',
+        r.leftArm ?? '',
+        r.rightArm ?? '',
+        r.leftThigh ?? '',
+        r.rightThigh ?? '',
         (r.note ?? '').replace(/,/g, '，'),
       ].join(','),
     )

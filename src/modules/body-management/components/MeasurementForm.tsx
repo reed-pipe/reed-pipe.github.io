@@ -10,8 +10,10 @@ interface FormValues {
   waist?: number
   hip?: number
   chest?: number
-  arm?: number
-  thigh?: number
+  leftArm?: number
+  rightArm?: number
+  leftThigh?: number
+  rightThigh?: number
   note?: string
 }
 
@@ -25,8 +27,10 @@ const fields = [
   { name: 'waist', label: '腰围', placeholder: '腰围 cm' },
   { name: 'hip', label: '臀围', placeholder: '臀围 cm' },
   { name: 'chest', label: '胸围', placeholder: '胸围 cm' },
-  { name: 'arm', label: '臂围', placeholder: '臂围 cm' },
-  { name: 'thigh', label: '腿围', placeholder: '腿围 cm' },
+  { name: 'leftArm', label: '左臂围', placeholder: '左臂围 cm' },
+  { name: 'rightArm', label: '右臂围', placeholder: '右臂围 cm' },
+  { name: 'leftThigh', label: '左腿围', placeholder: '左腿围 cm' },
+  { name: 'rightThigh', label: '右腿围', placeholder: '右腿围 cm' },
 ] as const
 
 export default function MeasurementForm({ onDataChanged }: Props) {
@@ -44,8 +48,10 @@ export default function MeasurementForm({ onDataChanged }: Props) {
       waist: values.waist ?? undefined,
       hip: values.hip ?? undefined,
       chest: values.chest ?? undefined,
-      arm: values.arm ?? undefined,
-      thigh: values.thigh ?? undefined,
+      leftArm: values.leftArm ?? undefined,
+      rightArm: values.rightArm ?? undefined,
+      leftThigh: values.leftThigh ?? undefined,
+      rightThigh: values.rightThigh ?? undefined,
       note: values.note || undefined,
       createdAt: Date.now(),
     })

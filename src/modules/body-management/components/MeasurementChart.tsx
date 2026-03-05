@@ -9,14 +9,16 @@ interface Props {
 const PADDING = { top: 28, right: 48, bottom: 32, left: 48 }
 const SVG_HEIGHT = 240
 
-type MetricKey = 'waist' | 'hip' | 'chest' | 'arm' | 'thigh'
+type MetricKey = 'waist' | 'hip' | 'chest' | 'leftArm' | 'rightArm' | 'leftThigh' | 'rightThigh'
 
 const metricOptions: { value: MetricKey; label: string }[] = [
   { value: 'waist', label: '腰围' },
   { value: 'hip', label: '臀围' },
   { value: 'chest', label: '胸围' },
-  { value: 'arm', label: '臂围' },
-  { value: 'thigh', label: '腿围' },
+  { value: 'leftArm', label: '左臂围' },
+  { value: 'rightArm', label: '右臂围' },
+  { value: 'leftThigh', label: '左腿围' },
+  { value: 'rightThigh', label: '右腿围' },
 ]
 
 function niceYTicks(min: number, max: number, targetCount = 5): number[] {
