@@ -2,13 +2,30 @@ const SERVICE_TOKEN = import.meta.env.VITE_SERVICE_TOKEN as string | undefined
 
 const API = 'https://api.github.com'
 
-function headers() {
+function headers(): Record<string, string> {
   if (!SERVICE_TOKEN) throw new Error('VITE_SERVICE_TOKEN not configured')
   return {
     Authorization: `token ${SERVICE_TOKEN}`,
     Accept: 'application/vnd.github+json',
     'Content-Type': 'application/json',
   }
+}
+
+// --------------- ETag caching ---------------
+const ETAG_KEY = 'pa_gist_etags'
+
+function getStoredEtag(gistId: string): string | undefined {
+  try {
+    return JSON.parse(localStorage.getItem(ETAG_KEY) ?? '{}')[gistId]
+  } catch { return undefined }
+}
+
+function storeEtag(gistId: string, etag: string) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ETAG_KEY) ?? '{}')
+    stored[gistId] = etag
+    localStorage.setItem(ETAG_KEY, JSON.stringify(stored))
+  } catch { /* ignore */ }
 }
 
 export interface GistFile {
@@ -34,6 +51,21 @@ export async function listGists(): Promise<GistInfo[]> {
 export async function getGist(gistId: string): Promise<GistInfo> {
   const res = await fetch(`${API}/gists/${gistId}`, { headers: headers() })
   if (!res.ok) throw new Error(`Get gist failed: ${res.status}`)
+  const etag = res.headers.get('etag')
+  if (etag) storeEtag(gistId, etag)
+  return res.json()
+}
+
+/** Conditional GET — returns null if the gist hasn't changed (HTTP 304). */
+export async function getGistIfModified(gistId: string): Promise<GistInfo | null> {
+  const etag = getStoredEtag(gistId)
+  const hdrs = headers()
+  if (etag) hdrs['If-None-Match'] = etag
+  const res = await fetch(`${API}/gists/${gistId}`, { headers: hdrs })
+  if (res.status === 304) return null
+  if (!res.ok) throw new Error(`Get gist failed: ${res.status}`)
+  const newEtag = res.headers.get('etag')
+  if (newEtag) storeEtag(gistId, newEtag)
   return res.json()
 }
 
@@ -86,5 +118,7 @@ export async function updateGistFiles(
     body: JSON.stringify({ files: body }),
   })
   if (!res.ok) throw new Error(`Update gist files failed: ${res.status}`)
+  const etag = res.headers.get('etag')
+  if (etag) storeEtag(gistId, etag)
   return res.json()
 }

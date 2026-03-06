@@ -12,7 +12,7 @@ import { pullData, pushData } from './shared/sync/sync'
 import { useDb } from './shared/db/context'
 
 function SyncOnMount() {
-  const { cryptoKey, dataGistId } = useAuthStore()
+  const { cryptoKey, dataGistId, username } = useAuthStore()
   const db = useDb()
 
   useEffect(() => {
@@ -22,16 +22,16 @@ function SyncOnMount() {
       await migrateLegacyData(db)
 
       // 同步云端数据
-      if (!cryptoKey || !dataGistId) return
+      if (!cryptoKey || !dataGistId || !username) return
       const { setSyncing, setSynced, setError } = useSyncStore.getState()
       setSyncing(true)
       try {
         const pulled = await pullData(db, cryptoKey, dataGistId)
         if (!pulled) {
-          // 云端为空（新注册或迁移后），推送本地数据上去
+          // 云端为空或未变化 — 如果本地有数据且从未推送过，推一次
           const count = await db.weightRecords.count() + await db.kv.count()
           if (count > 0) {
-            await pushData(db, cryptoKey, dataGistId)
+            await pushData(db, cryptoKey, dataGistId, username)
           }
         }
         setSynced()
@@ -40,7 +40,7 @@ function SyncOnMount() {
       }
     }
     void init()
-  }, [cryptoKey, dataGistId, db])
+  }, [cryptoKey, dataGistId, username, db])
 
   return null
 }

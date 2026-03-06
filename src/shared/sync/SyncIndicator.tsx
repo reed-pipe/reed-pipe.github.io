@@ -12,17 +12,17 @@ import { pushData, pullData } from './sync'
 
 export default function SyncIndicator() {
   const { syncing, lastSynced, error } = useSyncStore()
-  const { cryptoKey, dataGistId } = useAuthStore()
+  const { cryptoKey, dataGistId, username } = useAuthStore()
   const db = useDb()
 
   const handleManualSync = async () => {
-    if (!cryptoKey || !dataGistId) {
+    if (!cryptoKey || !dataGistId || !username) {
       message.warning('需要重新登录以启用同步')
       return
     }
     useSyncStore.getState().setSyncing(true)
     try {
-      await pushData(db, cryptoKey, dataGistId)
+      await pushData(db, cryptoKey, dataGistId, username)
       useSyncStore.getState().setSynced()
       message.success('同步完成')
     } catch (err) {

@@ -1,5 +1,5 @@
 import { encrypt, decrypt } from '../auth/crypto'
-import { getGist, updateGistFiles } from './gist'
+import { getGistIfModified, updateGistFiles } from './gist'
 import { type AppDb } from '../db'
 
 const CURRENT_SYNC_VERSION = 2
@@ -102,6 +102,7 @@ export async function pushData(
   db: AppDb,
   key: CryptoKey,
   dataGistId: string,
+  username: string,
 ): Promise<void> {
   const [kvItems, weightRecords, bodyMeasurements, trips, tripSpots] = await Promise.all([
     db.kv.toArray(),
@@ -136,9 +137,6 @@ export async function pushData(
 
   const filesToUpdate: Record<string, string> = {}
 
-  // Resolve filenames from gist
-  const gist = await getGist(dataGistId)
-  const username = Object.keys(gist.files)[0]?.replace('pa-data-', '').replace('.json', '') ?? 'user'
   const dataFileName = `pa-data-${username}.json`
   const blobFileName = `pa-blob-${username}.json`
 
@@ -168,7 +166,8 @@ export async function pullData(
   key: CryptoKey,
   dataGistId: string,
 ): Promise<boolean> {
-  const gist = await getGist(dataGistId)
+  const gist = await getGistIfModified(dataGistId)
+  if (!gist) return false // 304 Not Modified — skip pull
   const files = gist.files
   const keys = Object.keys(files)
 
@@ -241,16 +240,17 @@ export function notifyDataChanged(
   db: AppDb,
   key: CryptoKey | null,
   dataGistId: string | null,
+  username: string | null,
   onSyncStart: () => void,
   onSyncEnd: (error?: string) => void,
 ) {
-  if (!key || !dataGistId) return
+  if (!key || !dataGistId || !username) return
 
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(async () => {
     onSyncStart()
     try {
-      await pushData(db, key, dataGistId)
+      await pushData(db, key, dataGistId, username)
       onSyncEnd()
     } catch (err) {
       onSyncEnd(err instanceof Error ? err.message : 'Push failed')

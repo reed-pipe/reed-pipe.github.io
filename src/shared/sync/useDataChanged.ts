@@ -6,13 +6,13 @@ import { notifyDataChanged } from './sync'
 
 export function useDataChanged() {
   const db = useDb()
-  const { cryptoKey, dataGistId } = useAuthStore()
+  const { cryptoKey, dataGistId, username } = useAuthStore()
 
   return useCallback(() => {
     const { setSyncing, setSynced, setError } = useSyncStore.getState()
-    notifyDataChanged(db, cryptoKey, dataGistId, () => setSyncing(true), (err) => {
+    notifyDataChanged(db, cryptoKey, dataGistId, username, () => setSyncing(true), (err) => {
       if (err) setError(err)
       else setSynced()
     })
-  }, [db, cryptoKey, dataGistId])
+  }, [db, cryptoKey, dataGistId, username])
 }
