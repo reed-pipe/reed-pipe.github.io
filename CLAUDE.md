@@ -1,49 +1,72 @@
-# 个人助手 (reed-pipe.github.io)
+# CLAUDE.md
 
-## 项目概述
-模块化个人工具集，托管在 GitHub Pages。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 技术栈
-- React 18 + TypeScript + Vite
-- React Router v7（懒加载）
-- Zustand（状态管理）
-- Ant Design（UI 组件库）
-- Dexie.js（IndexedDB 本地持久化）
+## Project Overview
 
-## 常用命令
+Modular personal tool suite (个人助手) hosted on GitHub Pages. Chinese UI. Modules: travel footprint tracker, body management.
+
+## Commands
+
 ```bash
-npm run dev      # 本地开发服务器
-npm run build    # 类型检查 + 生产构建
-npm run preview  # 预览构建产物
+npm run dev      # Local dev server (Vite)
+npm run build    # tsc -b (type check) + vite build (production)
+npm run preview  # Preview built artifacts
 ```
 
-## 项目结构
-```
-src/
-├── modules/              # 功能模块（每个模块独立目录）
-│   └── <module>/
-│       ├── index.tsx     # 模块入口（default export）
-│       └── components/   # 模块私有组件
-├── shared/
-│   ├── components/       # 公共组件（AppLayout 等）
-│   ├── hooks/            # 公共 hooks
-│   ├── utils/            # 工具函数
-│   └── db/               # Dexie 数据库定义
-├── router.tsx            # 路由配置（集中管理）
-├── App.tsx               # 根组件
-└── main.tsx              # 入口
-```
+No test framework is configured. Type checking via `tsc -b` is the primary validation step.
 
-## 添加新模块
-1. `src/modules/<name>/index.tsx` — 导出页面组件
-2. `src/router.tsx` — 添加路由配置（path, label, icon）
-3. 菜单自动根据路由配置生成
+## Architecture
 
-## 约定
-- 路径别名：`@/` → `src/`
-- 路由懒加载：所有模块使用 `React.lazy()` 导入
-- 本地数据持久化统一使用 `src/shared/db/` 中的 Dexie 实例
-- 部署：push main 自动通过 GitHub Actions 部署
+### Module Pattern
 
-## Vite 配置
-- `base: '/'`（用户名.github.io 仓库，根路径）
+Each module lives in `src/modules/<name>/` with:
+- `index.tsx` — Page component (default export, lazy-loaded via `React.lazy()`)
+- `components/` — Module-private components
+- `utils.ts` — Module helpers
+- Optional: `store.ts` (Zustand), `geocode.ts`, `mapConfig.ts`
+
+Routes defined in `src/router.tsx`. Sidebar menu auto-generates from route config (`label` + `icon` fields).
+
+### Data Flow
+
+**Source of truth**: Dexie.js (IndexedDB), not React state. Use `useLiveQuery()` for reactive reads.
+
+**Database**: Per-user DB named `PA_{username}`. Schema in `src/shared/db/index.ts`. Tables: `kv` (settings), `weightRecords`, `bodyMeasurements`, `trips`, `tripSpots`.
+
+**After any DB mutation**, call the callback from `useDataChanged()` hook to trigger cloud sync.
+
+### Cloud Sync (GitHub Gist)
+
+`src/shared/sync/` — All data encrypted client-side (AES-GCM + PBKDF2) before pushing to GitHub Gist.
+
+- `gist.ts` — Gist API wrapper with ETag conditional requests (304 optimization)
+- `sync.ts` — `pullData()` / `pushData()` with v2 sync protocol
+- Two gist files per user: `pa-data-{username}.json` (table data) + `pa-blob-{username}.json` (photos/covers)
+- Auto-sync: 3-second debounce after data changes
+- `VITE_SERVICE_TOKEN` env var provides the GitHub API token (set in GitHub Actions secrets)
+
+### Auth
+
+`src/shared/auth/` — Username/password auth with client-side PBKDF2 key derivation. Password never leaves the browser. Registry stored in a shared Gist. Admin user: `reed-pipe`.
+
+### Maps (Travel Module)
+
+- React-Leaflet with OSM or Amap (高德) tile providers
+- Coordinate system: WGS84 stored in DB, converted to GCJ-02 for Amap display
+- `mapConfig.ts` — Provider detection/preference, WGS84↔GCJ-02 conversion
+- `geocode.ts` — Address search + reverse geocoding, routes to Amap API (with key) or Nominatim based on provider
+- Photos stored as base64 data URLs (compressed to 800px width, 0.7 JPEG quality)
+
+### PWA
+
+`vite-plugin-pwa` with `registerType: 'autoUpdate'`, standalone display. Service worker caches static assets + map tiles. MIUI PWA file input requires native `<input type="file">` overlays (no programmatic `.click()`).
+
+## Key Conventions
+
+- Path alias: `@/` → `src/`
+- Styling: Ant Design v6 theme tokens + inline styles (no CSS modules)
+- Chinese locale: Ant Design `zh_CN`
+- All coordinates in DB are WGS84; display conversion happens at render time
+- GitHub Pages SPA routing: `404.html` redirect hack in `public/`
+- Deployment: push to `main` → GitHub Actions builds and deploys
