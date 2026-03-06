@@ -1,21 +1,48 @@
-import { Image, Empty, Typography } from 'antd'
+import { Image, Typography, Modal, message, theme } from 'antd'
+import { DeleteOutlined } from '@ant-design/icons'
 import type { TripSpot } from '@/shared/db'
+import { useDb } from '@/shared/db/context'
 import { sortSpots } from '../utils'
 
 const { Text } = Typography
 
 interface Props {
   spots: TripSpot[]
+  onDataChanged?: () => void
 }
 
-export default function PhotoGallery({ spots }: Props) {
+export default function PhotoGallery({ spots, onDataChanged }: Props) {
+  const db = useDb()
+  const { token: { colorError } } = theme.useToken()
   const sorted = sortSpots(spots)
   const allPhotos = sorted.flatMap((s) =>
-    s.photos.map((photo) => ({ photo, spotName: s.name })),
+    s.photos.map((photo, idx) => ({ photo, spotName: s.name, spotId: s.id, photoIdx: idx })),
   )
 
+  const handleDelete = (spotId: number, photoIdx: number, spotName: string) => {
+    Modal.confirm({
+      title: '删除照片',
+      content: `确定删除「${spotName}」的这张照片？`,
+      okText: '删除',
+      okType: 'danger',
+      onOk: async () => {
+        const spot = await db.tripSpots.get(spotId)
+        if (!spot) return
+        const newPhotos = spot.photos.filter((_, i) => i !== photoIdx)
+        await db.tripSpots.update(spotId, { photos: newPhotos })
+        onDataChanged?.()
+        message.success('已删除')
+      },
+    })
+  }
+
   if (allPhotos.length === 0) {
-    return <Empty description="暂无照片" style={{ padding: 40 }} />
+    return (
+      <div style={{ padding: 48, textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>📷</div>
+        <Text type="secondary">暂无照片</Text>
+      </div>
+    )
   }
 
   return (
@@ -23,31 +50,68 @@ export default function PhotoGallery({ spots }: Props) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-          gap: 8,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+          gap: 6,
         }}
       >
-        {allPhotos.map(({ photo, spotName }, i) => (
-          <div key={i} style={{ position: 'relative' }}>
+        {allPhotos.map(({ photo, spotName, spotId, photoIdx }, i) => (
+          <div
+            key={i}
+            style={{
+              position: 'relative',
+              borderRadius: 12,
+              overflow: 'hidden',
+              aspectRatio: '1',
+            }}
+          >
             <Image
               src={photo}
-              style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 6 }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
+            {/* Bottom overlay: spot name */}
             <div
               style={{
                 position: 'absolute',
                 bottom: 0,
                 left: 0,
                 right: 0,
-                padding: '2px 6px',
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.5))',
-                borderRadius: '0 0 6px 6px',
+                padding: '16px 8px 6px',
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.55))',
+                pointerEvents: 'none',
               }}
             >
-              <Text style={{ color: '#fff', fontSize: 11, display: 'block' }} ellipsis>
+              <Text style={{ color: '#fff', fontSize: 11, display: 'block', lineHeight: 1.3 }} ellipsis>
                 {spotName}
               </Text>
             </div>
+            {/* Delete button */}
+            {onDataChanged && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDelete(spotId, photoIdx, spotName)
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 6,
+                  right: 6,
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.45)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  zIndex: 5,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = colorError }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.45)' }}
+              >
+                <DeleteOutlined style={{ color: '#fff', fontSize: 12 }} />
+              </div>
+            )}
           </div>
         ))}
       </div>

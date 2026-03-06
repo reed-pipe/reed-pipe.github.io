@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Space, Select, Segmented, Typography, Grid, Empty, message, theme } from 'antd'
+import { Button, Space, Select, Segmented, Typography, Grid, message, theme } from 'antd'
 import { PlusOutlined, DownloadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import 'leaflet/dist/leaflet.css'
@@ -151,8 +151,8 @@ export default function Travel() {
               ...(stats.totalCost > 0 ? [{ label: '\u82B1\u8D39', value: formatCost(stats.totalCost) }] : []),
             ].map(s => (
               <div key={s.label} style={{
-                padding: '3px 8px', borderRadius: 6,
-                background: 'rgba(0,0,0,0.04)', fontSize: 12, lineHeight: '18px',
+                padding: '4px 10px', borderRadius: 20,
+                background: `${colorPrimary}08`, fontSize: 12, lineHeight: '18px',
               }}>
                 <span style={{ color: '#999' }}>{s.label}</span>{' '}
                 <span style={{ fontWeight: 600, color: colorPrimary }}>{s.value}</span>
@@ -195,48 +195,74 @@ export default function Travel() {
         )}
 
         {/* Compact trip list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filteredTrips.length > 0 ? filteredTrips.map(trip => {
             const days = tripDays(trip.startDate, trip.endDate)
+            const spotCount = allSpots.filter(s => s.tripId === trip.id).length
             return (
               <div
                 key={trip.id}
                 onClick={() => handleSelectTrip(trip.id!)}
                 style={{
-                  display: 'flex', gap: 10, padding: 8, borderRadius: 10,
-                  cursor: 'pointer', transition: 'all 0.2s',
-                  border: '1px solid #f0f0f0',
+                  display: 'flex', gap: 12, padding: 10, borderRadius: 14,
+                  cursor: 'pointer', transition: 'all 0.2s ease',
+                  background: 'rgba(0,0,0,0.02)',
+                  border: '1px solid transparent',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = colorPrimary; e.currentTarget.style.background = `${colorPrimary}08` }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#f0f0f0'; e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#fff'
+                  e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'
+                  e.currentTarget.style.borderColor = `${colorPrimary}25`
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.02)'
+                  e.currentTarget.style.boxShadow = 'none'
+                  e.currentTarget.style.borderColor = 'transparent'
+                }}
               >
                 <div style={{
-                  width: 56, height: 56, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
-                  background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 52, height: 52, borderRadius: 12, overflow: 'hidden', flexShrink: 0,
+                  background: `${colorPrimary}10`, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   {trip.coverPhoto ? (
                     <img src={trip.coverPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    <span style={{ fontSize: 20 }}>{'\uD83D\uDDFA\uFE0F'}</span>
+                    <span style={{ fontSize: 22, opacity: 0.6 }}>{'\uD83D\uDDFA\uFE0F'}</span>
                   )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {trip.title}
                   </div>
-                  <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-                    {trip.destination} · {days}{'\u5929'}
+                  <div style={{ fontSize: 12, color: '#888', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span>{trip.destination}</span>
+                    <span style={{ color: '#d9d9d9' }}>·</span>
+                    <span>{days}{'\u5929'}</span>
+                    {spotCount > 0 && (
+                      <>
+                        <span style={{ color: '#d9d9d9' }}>·</span>
+                        <span>{spotCount}个地点</span>
+                      </>
+                    )}
                   </div>
-                  <div style={{ fontSize: 11, color: '#bbb', marginTop: 1 }}>
+                  <div style={{ fontSize: 11, color: '#bbb', marginTop: 2 }}>
                     {formatDateRange(trip.startDate, trip.endDate)}
+                    {trip.rating != null && trip.rating > 0 && (
+                      <span style={{ marginLeft: 6, color: '#faad14' }}>{'★'.repeat(trip.rating)}</span>
+                    )}
                   </div>
                 </div>
               </div>
             )
           }) : trips.length > 0 ? (
-            <Empty description={'\u6CA1\u6709\u5339\u914D\u7684\u65C5\u884C'} style={{ padding: 24 }} />
+            <div style={{ padding: 32, textAlign: 'center' }}>
+              <Text type="secondary">{'\u6CA1\u6709\u5339\u914D\u7684\u65C5\u884C'}</Text>
+            </div>
           ) : (
-            <Empty description={'\u8FD8\u6CA1\u6709\u65C5\u884C\u8BB0\u5F55'} style={{ padding: 24 }} />
+            <div style={{ padding: 48, textAlign: 'center' }}>
+              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>{'\uD83C\uDF0D'}</div>
+              <Text type="secondary">{'\u8FD8\u6CA1\u6709\u65C5\u884C\u8BB0\u5F55'}</Text>
+            </div>
           )}
         </div>
       </>
