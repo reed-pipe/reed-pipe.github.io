@@ -1,36 +1,51 @@
 import { useState, useMemo } from 'react'
-import { Button, Space, Select, Segmented, Typography, Grid, Empty, Modal, message } from 'antd'
-import { PlusOutlined, GlobalOutlined, DownloadOutlined } from '@ant-design/icons'
+import { Button, Space, Select, Segmented, Typography, Grid, Empty, message, theme } from 'antd'
+import { PlusOutlined, DownloadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import 'leaflet/dist/leaflet.css'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { Trip } from '@/shared/db'
-import TripCard from './components/TripCard'
 import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
-import TravelStats from './components/TravelStats'
-import TripMap from './components/TripMap'
-import { exportTravelCSV } from './utils'
+import { exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange } from './utils'
 import { useMapProviderPreference, setMapProvider } from './mapConfig'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
+
+const PANEL_WIDTH = 360
+
+const glassPanel: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.92)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+  border: '1px solid rgba(255,255,255,0.6)',
+}
+
+const glassButton: React.CSSProperties = {
+  ...glassPanel,
+  borderRadius: 10,
+  padding: '4px 8px',
+  height: 'auto',
+}
 
 export default function Travel() {
   const db = useDb()
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
   const isMobile = !screens.md
+  const { token: { colorPrimary } } = theme.useToken()
 
   const [formOpen, setFormOpen] = useState(false)
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null)
-  const [showFootprint, setShowFootprint] = useState(false)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [yearFilter, setYearFilter] = useState<string | null>(null)
-  const [routeTripId, setRouteTripId] = useState<number | null>(null)
+  const [panelCollapsed, setPanelCollapsed] = useState(false)
+  const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('half')
   const mapPref = useMapProviderPreference()
 
   const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
@@ -38,26 +53,25 @@ export default function Travel() {
 
   const filteredTrips = useMemo(() => {
     let result = trips
-    if (tagFilter) {
-      result = result.filter((t) => t.tags.includes(tagFilter))
-    }
-    if (yearFilter) {
-      result = result.filter((t) => t.startDate.startsWith(yearFilter))
-    }
+    if (tagFilter) result = result.filter(t => t.tags.includes(tagFilter))
+    if (yearFilter) result = result.filter(t => t.startDate.startsWith(yearFilter))
     return result
   }, [trips, tagFilter, yearFilter])
 
-  const allTags = useMemo(() => [...new Set(trips.flatMap((t) => t.tags))].sort(), [trips])
+  const allTags = useMemo(() => [...new Set(trips.flatMap(t => t.tags))].sort(), [trips])
   const allYears = useMemo(() => {
-    const years = [...new Set(trips.map((t) => t.startDate.slice(0, 4)))]
+    const years = [...new Set(trips.map(t => t.startDate.slice(0, 4)))]
     return years.sort().reverse()
   }, [trips])
 
-  const selectedTrip = trips.find((t) => t.id === selectedTripId) ?? null
+  const selectedTrip = trips.find(t => t.id === selectedTripId) ?? null
   const selectedSpots = useMemo(
-    () => (selectedTripId ? allSpots.filter((s) => s.tripId === selectedTripId) : []),
+    () => selectedTripId ? allSpots.filter(s => s.tripId === selectedTripId) : [],
     [allSpots, selectedTripId],
   )
+
+  const stats = useMemo(() => computeStats(trips, allSpots), [trips, allSpots])
+  const spotCount = allSpots.filter(s => s.lat && s.lng).length
 
   const handleExport = () => {
     const csv = exportTravelCSV(trips, allSpots)
@@ -66,171 +80,259 @@ export default function Travel() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `旅行记录_${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `\u65C5\u884C\u8BB0\u5F55_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    message.success('导出成功')
+    message.success('\u5BFC\u51FA\u6210\u529F')
   }
 
-  const spotCount = allSpots.filter((s) => s.lat && s.lng).length
+  const handleSelectTrip = (tripId: number) => {
+    setSelectedTripId(tripId)
+    if (isMobile) setSheetSnap('full')
+  }
 
-  const renderContent = () => {
-    // 足迹地图视图 — 全屏沉浸式
-    if (showFootprint) {
-      return (
-        <div style={{
-          margin: isMobile ? '-12px' : '-24px',
-          marginTop: isMobile ? '-12px' : '-24px',
-          height: isMobile ? 'calc(100vh - 80px)' : 'calc(100vh - 112px)',
-        }}>
-          <FootprintMap
-            trips={trips}
-            spots={allSpots}
-            height="100%"
-            onBack={() => setShowFootprint(false)}
-            spotCount={spotCount}
-          />
-        </div>
-      )
-    }
+  const handleBack = () => {
+    setSelectedTripId(null)
+    if (isMobile) setSheetSnap('half')
+  }
 
-    // 旅行详情视图
+  const panelHeader = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+      <Segmented
+        size="small"
+        options={[
+          { label: '\u81EA\u52A8', value: 'auto' },
+          { label: 'OSM', value: 'osm' },
+          { label: '\u9AD8\u5FB7', value: 'amap' },
+        ]}
+        value={mapPref}
+        onChange={v => setMapProvider(v as 'auto' | 'osm' | 'amap')}
+      />
+      <Space size={4}>
+        {trips.length > 0 && (
+          <Button icon={<DownloadOutlined />} size="small" onClick={handleExport} type="text" />
+        )}
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          size="small"
+          onClick={() => { setEditingTrip(null); setFormOpen(true) }}
+        >
+          {'\u65B0\u5EFA'}
+        </Button>
+      </Space>
+    </div>
+  )
+
+  const renderPanelBody = () => {
     if (selectedTrip) {
       return (
         <TripDetail
           trip={selectedTrip}
           spots={selectedSpots}
-          onBack={() => setSelectedTripId(null)}
+          onBack={handleBack}
           onEdit={() => { setEditingTrip(selectedTrip); setFormOpen(true) }}
-          onDeleted={() => setSelectedTripId(null)}
+          onDeleted={handleBack}
           onDataChanged={notifyChanged}
         />
       )
     }
 
-    // 列表视图
     return (
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {/* 顶部操作栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <Space wrap>
-            <Button icon={<GlobalOutlined />} onClick={() => setShowFootprint(true)}>
-              足迹地图
-            </Button>
-            {trips.length > 0 && (
-              <Button icon={<DownloadOutlined />} onClick={handleExport} size={isMobile ? 'small' : 'middle'}>
-                {!isMobile && '导出'}
-              </Button>
-            )}
-            <Segmented
-              size="small"
-              options={[
-                { label: '自动', value: 'auto' },
-                { label: 'OSM', value: 'osm' },
-                { label: '高德', value: 'amap' },
-              ]}
-              value={mapPref}
-              onChange={(v) => setMapProvider(v as 'auto' | 'osm' | 'amap')}
-            />
-          </Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingTrip(null); setFormOpen(true) }}>
-            新建旅行
-          </Button>
-        </div>
-
-        {/* 统计 */}
-        <TravelStats trips={trips} spots={allSpots} />
-
-        {/* 筛选 */}
+      <>
+        {/* Compact stats */}
         {trips.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            {[
+              { label: '\u65C5\u884C', value: `${stats.totalTrips}\u6B21` },
+              { label: '\u76EE\u7684\u5730', value: `${stats.destinations}\u4E2A` },
+              { label: '\u5929\u6570', value: `${stats.totalDays}\u5929` },
+              { label: '\u6253\u5361', value: `${stats.totalSpots}\u4E2A` },
+              ...(stats.totalCost > 0 ? [{ label: '\u82B1\u8D39', value: formatCost(stats.totalCost) }] : []),
+            ].map(s => (
+              <div key={s.label} style={{
+                padding: '3px 8px', borderRadius: 6,
+                background: 'rgba(0,0,0,0.04)', fontSize: 12, lineHeight: '18px',
+              }}>
+                <span style={{ color: '#999' }}>{s.label}</span>{' '}
+                <span style={{ fontWeight: 600, color: colorPrimary }}>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Filters */}
+        {trips.length > 0 && (allTags.length > 0 || allYears.length > 1) && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             {allTags.length > 0 && (
               <Select
-                placeholder="标签筛选"
+                placeholder={'\u6807\u7B7E'}
                 allowClear
                 size="small"
-                style={{ minWidth: 100 }}
+                style={{ minWidth: 90 }}
                 value={tagFilter}
                 onChange={setTagFilter}
-                options={allTags.map((t) => ({ label: t, value: t }))}
+                options={allTags.map(t => ({ label: t, value: t }))}
               />
             )}
             {allYears.length > 1 && (
               <Select
-                placeholder="年份"
+                placeholder={'\u5E74\u4EFD'}
                 allowClear
                 size="small"
-                style={{ minWidth: 80 }}
+                style={{ minWidth: 75 }}
                 value={yearFilter}
                 onChange={setYearFilter}
-                options={allYears.map((y) => ({ label: y, value: y }))}
+                options={allYears.map(y => ({ label: y, value: y }))}
               />
             )}
             {(tagFilter || yearFilter) && (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {filteredTrips.length} / {trips.length} 次旅行
+              <Text type="secondary" style={{ fontSize: 12, lineHeight: '24px' }}>
+                {filteredTrips.length}/{trips.length}
               </Text>
             )}
           </div>
         )}
 
-        {/* 旅行卡片列表 */}
-        {filteredTrips.length > 0 ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 16,
-            }}
-          >
-            {filteredTrips.map((trip) => {
-              const tripSpots = allSpots.filter((s) => s.tripId === trip.id)
-              const hasCoords = tripSpots.some((s) => s.lat != null && s.lng != null) ||
-                (trip.departureLat != null && trip.departureLng != null)
-              return (
-                <TripCard
-                  key={trip.id}
-                  trip={trip}
-                  onClick={() => setSelectedTripId(trip.id)}
-                  hasCoords={hasCoords}
-                  onPlayRoute={() => setRouteTripId(trip.id)}
-                />
-              )
-            })}
-          </div>
-        ) : trips.length > 0 ? (
-          <Empty description="没有匹配的旅行" />
-        ) : (
-          <Empty description="还没有旅行记录，点击右上角开始记录第一次旅行吧" style={{ padding: 60 }} />
-        )}
-      </Space>
+        {/* Compact trip list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {filteredTrips.length > 0 ? filteredTrips.map(trip => {
+            const days = tripDays(trip.startDate, trip.endDate)
+            return (
+              <div
+                key={trip.id}
+                onClick={() => handleSelectTrip(trip.id!)}
+                style={{
+                  display: 'flex', gap: 10, padding: 8, borderRadius: 10,
+                  cursor: 'pointer', transition: 'all 0.2s',
+                  border: '1px solid #f0f0f0',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = colorPrimary; e.currentTarget.style.background = `${colorPrimary}08` }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#f0f0f0'; e.currentTarget.style.background = 'transparent' }}
+              >
+                <div style={{
+                  width: 56, height: 56, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
+                  background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {trip.coverPhoto ? (
+                    <img src={trip.coverPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: 20 }}>{'\uD83D\uDDFA\uFE0F'}</span>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {trip.title}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                    {trip.destination} · {days}{'\u5929'}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#bbb', marginTop: 1 }}>
+                    {formatDateRange(trip.startDate, trip.endDate)}
+                  </div>
+                </div>
+              </div>
+            )
+          }) : trips.length > 0 ? (
+            <Empty description={'\u6CA1\u6709\u5339\u914D\u7684\u65C5\u884C'} style={{ padding: 24 }} />
+          ) : (
+            <Empty description={'\u8FD8\u6CA1\u6709\u65C5\u884C\u8BB0\u5F55'} style={{ padding: 24 }} />
+          )}
+        </div>
+      </>
     )
   }
 
-  const routeTrip = routeTripId ? trips.find((t) => t.id === routeTripId) ?? null : null
-  const routeSpots = routeTripId ? allSpots.filter((s) => s.tripId === routeTripId) : []
-
   return (
     <>
-      {renderContent()}
+      <div style={{
+        position: 'relative',
+        margin: isMobile ? '-12px' : '-24px',
+        height: isMobile ? 'calc(100vh - 80px)' : 'calc(100vh - 112px)',
+        overflow: 'hidden',
+      }}>
+        {/* Full-screen background map */}
+        <FootprintMap
+          trips={trips}
+          spots={allSpots}
+          height="100%"
+          spotCount={spotCount}
+          highlightTripId={selectedTripId}
+          onTripClick={handleSelectTrip}
+        />
+
+        {/* Desktop: side panel */}
+        {!isMobile && (
+          <>
+            <div style={{
+              position: 'absolute', top: 12,
+              left: panelCollapsed ? 12 : PANEL_WIDTH + 12,
+              zIndex: 1000, transition: 'left 0.3s ease',
+            }}>
+              <Button
+                type="text"
+                icon={panelCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setPanelCollapsed(!panelCollapsed)}
+                style={glassButton}
+              />
+            </div>
+
+            <div style={{
+              position: 'absolute', top: 0, left: 0, bottom: 0,
+              width: PANEL_WIDTH,
+              transform: panelCollapsed ? `translateX(-${PANEL_WIDTH}px)` : 'translateX(0)',
+              transition: 'transform 0.3s ease',
+              zIndex: 900,
+              ...glassPanel,
+              borderRadius: 0,
+              display: 'flex', flexDirection: 'column',
+            }}>
+              <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid rgba(0,0,0,0.06)', flexShrink: 0 }}>
+                {panelHeader}
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
+                {renderPanelBody()}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Mobile: bottom sheet */}
+        {isMobile && (
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 900,
+            height: sheetSnap === 'peek' ? 100 : sheetSnap === 'half' ? '50%' : '85%',
+            transition: 'height 0.3s ease',
+            ...glassPanel,
+            borderRadius: '16px 16px 0 0',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div
+              onClick={() => {
+                if (sheetSnap === 'peek') setSheetSnap('half')
+                else if (sheetSnap === 'full') setSheetSnap('half')
+                else setSheetSnap(selectedTrip ? 'full' : 'peek')
+              }}
+              style={{ padding: '10px 0 6px', textAlign: 'center', cursor: 'pointer', flexShrink: 0 }}
+            >
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: '#ccc', margin: '0 auto' }} />
+            </div>
+            <div style={{ padding: '0 12px 8px', flexShrink: 0 }}>
+              {panelHeader}
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 12px' }}>
+              {renderPanelBody()}
+            </div>
+          </div>
+        )}
+      </div>
+
       <TripForm
         open={formOpen}
         trip={editingTrip}
         onClose={() => setFormOpen(false)}
         onSaved={notifyChanged}
       />
-      <Modal
-        title={routeTrip ? `${routeTrip.title} — 路线地图` : '路线地图'}
-        open={routeTripId !== null}
-        onCancel={() => setRouteTripId(null)}
-        footer={null}
-        width={isMobile ? '95vw' : 720}
-        styles={{ body: { padding: '12px 0' } }}
-      >
-        {routeTrip && (
-          <TripMap trip={routeTrip} spots={routeSpots} height={isMobile ? 350 : 450} />
-        )}
-      </Modal>
     </>
   )
 }

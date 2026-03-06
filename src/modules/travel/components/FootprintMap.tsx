@@ -1,8 +1,8 @@
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react'
-import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, CircleMarker, Polyline, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
-import { Button, Empty, theme } from 'antd'
-import { PlayCircleOutlined, ReloadOutlined, PauseOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { Button, theme } from 'antd'
+import { PlayCircleOutlined, ReloadOutlined, PauseOutlined } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useMapProvider, toDisplayCoord } from '../mapConfig'
 import MapTiles from './MapTiles'
@@ -11,8 +11,9 @@ interface Props {
   trips: Trip[]
   spots: TripSpot[]
   height?: number | string
-  onBack?: () => void
   spotCount?: number
+  highlightTripId?: number | null
+  onTripClick?: (tripId: number) => void
 }
 
 /** Fit bounds when data/provider changes */
@@ -136,10 +137,15 @@ const glassStyle: React.CSSProperties = {
   padding: '6px 14px',
 }
 
-export default function FootprintMap({ trips, spots, height = 480, onBack, spotCount }: Props) {
+export default function FootprintMap({ trips, spots, height = 480, spotCount, highlightTripId, onTripClick }: Props) {
   const { token: { colorPrimary } } = theme.useToken()
   const [provider] = useMapProvider()
   const [animState, setAnimState] = useState<'idle' | 'playing' | 'paused' | 'done'>('idle')
+
+  // Reset animation when a trip is highlighted
+  useEffect(() => {
+    if (highlightTripId != null) setAnimState('idle')
+  }, [highlightTripId])
 
   const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t])), [trips])
 
@@ -174,9 +180,24 @@ export default function FootprintMap({ trips, spots, height = 480, onBack, spotC
     [displayMarkers],
   )
 
-  if (markers.length === 0) {
-    return <Empty description="暂无足迹坐标数据" style={{ padding: 40 }} />
-  }
+  // Coords to fit bounds: highlighted trip or all
+  const fitCoords = useMemo<[number, number][]>(() => {
+    if (highlightTripId != null) {
+      const hCoords = displayMarkers
+        .filter(m => m.tripId === highlightTripId)
+        .map(m => [m.lat, m.lng] as [number, number])
+      return hCoords.length > 0 ? hCoords : displayCoords
+    }
+    return displayCoords
+  }, [highlightTripId, displayMarkers, displayCoords])
+
+  // Route polyline for highlighted trip
+  const highlightRoute = useMemo<[number, number][]>(() => {
+    if (highlightTripId == null) return []
+    return displayMarkers
+      .filter(m => m.tripId === highlightTripId)
+      .map(m => [m.lat, m.lng] as [number, number])
+  }, [highlightTripId, displayMarkers])
 
   const center: [number, number] = displayCoords.length > 0
     ? [displayCoords.reduce((s, c) => s + c[0], 0) / displayCoords.length,
@@ -192,7 +213,7 @@ export default function FootprintMap({ trips, spots, height = 480, onBack, spotC
   const showStaticMarkers = animState === 'idle'
 
   return (
-    <div style={{ position: 'relative', height, borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height, overflow: 'hidden' }}>
       {/* Inject pulse animation CSS */}
       <style>{`@keyframes fpPulse{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.5);opacity:0}}`}</style>
 
@@ -204,21 +225,41 @@ export default function FootprintMap({ trips, spots, height = 480, onBack, spotC
         zoomControl={true}
       >
         <MapTiles provider={provider} />
-        <BoundsFitter coords={displayCoords} />
+        {fitCoords.length > 0 && <BoundsFitter coords={fitCoords} />}
 
-        {/* Static markers (shown when idle) */}
-        {showStaticMarkers && displayMarkers.map((m, i) => (
-          <CircleMarker
-            key={i}
-            center={[m.lat, m.lng]}
-            radius={6}
-            pathOptions={{ color: colorPrimary, fillColor: colorPrimary, fillOpacity: 0.7 }}
-          >
-            <Popup>
-              <b>{m.name}</b><br />{m.tripName}<br />{m.date}
-            </Popup>
-          </CircleMarker>
-        ))}
+        {/* Static markers */}
+        {showStaticMarkers && displayMarkers.map((m, i) => {
+          const isHighlighted = highlightTripId == null || m.tripId === highlightTripId
+          return (
+            <CircleMarker
+              key={i}
+              center={[m.lat, m.lng]}
+              radius={isHighlighted ? 7 : 4}
+              pathOptions={{
+                color: colorPrimary,
+                fillColor: colorPrimary,
+                fillOpacity: isHighlighted ? 0.8 : 0.15,
+                opacity: isHighlighted ? 1 : 0.2,
+                weight: isHighlighted ? 2 : 1,
+              }}
+              eventHandlers={{
+                click: () => onTripClick?.(m.tripId),
+              }}
+            >
+              <Popup>
+                <b>{m.name}</b><br />{m.tripName}<br />{m.date}
+              </Popup>
+            </CircleMarker>
+          )
+        })}
+
+        {/* Route line for highlighted trip */}
+        {showStaticMarkers && highlightRoute.length > 1 && (
+          <Polyline
+            positions={highlightRoute}
+            pathOptions={{ color: colorPrimary, weight: 3, opacity: 0.6, dashArray: '8,6' }}
+          />
+        )}
 
         {/* Animation layer */}
         {(animState === 'playing' || animState === 'paused') && (
@@ -231,20 +272,8 @@ export default function FootprintMap({ trips, spots, height = 480, onBack, spotC
         )}
       </MapContainer>
 
-      {/* Floating controls */}
-      {onBack && (
-        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 1000 }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={onBack}
-            style={{ ...glassStyle, cursor: 'pointer', fontWeight: 500 }}
-          >
-            返回
-          </Button>
-        </div>
-      )}
-
-      {displayMarkers.length > 1 && (
+      {/* Play button — only when no trip highlighted */}
+      {highlightTripId == null && displayMarkers.length > 1 && (
         <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1000 }}>
           <Button
             type="primary"
@@ -257,14 +286,14 @@ export default function FootprintMap({ trips, spots, height = 480, onBack, spotC
             size="small"
             style={{ ...glassStyle, background: colorPrimary, color: '#fff', border: 'none' }}
           >
-            {animState === 'playing' ? '暂停' : animState === 'paused' ? '继续' : animState === 'done' ? '重播' : '播放足迹'}
+            {animState === 'playing' ? '\u6682\u505C' : animState === 'paused' ? '\u7EE7\u7EED' : animState === 'done' ? '\u91CD\u64AD' : '\u64AD\u653E\u8DB3\u8FF9'}
           </Button>
         </div>
       )}
 
       {spotCount != null && (
-        <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 1000, ...glassStyle, fontSize: 12, color: '#666' }}>
-          共 {spotCount} 个坐标点
+        <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 1000, ...glassStyle, fontSize: 12, color: '#666' }}>
+          {'\u5171'} {spotCount} {'\u4E2A\u5750\u6807\u70B9'}
         </div>
       )}
     </div>
