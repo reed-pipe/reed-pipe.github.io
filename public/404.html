@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>个人助手</title>
+    <script>
+      // GitHub Pages SPA redirect hack
+      // Converts the path to a query string so index.html can restore it
+      var seg = location.pathname.split('/').length - 1;
+      var url = location.protocol + '//' + location.host +
+        location.pathname.split('/').slice(0, 1).join('/') + '/' +
+        '?/' + location.pathname.slice(1).split('/').slice(0).join('/') +
+        (location.search ? '&' + location.search.slice(1) : '') +
+        location.hash;
+      location.replace(url);
+    </script>
+  </head>
+  <body></body>
+</html>

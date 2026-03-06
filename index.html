@@ -8,6 +8,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // GitHub Pages SPA: restore path from 404.html redirect
+      (function() {
+        var q = window.location.search;
+        if (q && q[1] === '/') {
+          var decoded = q.slice(1).split('&').join('?');
+          window.history.replaceState(null, '', decoded + window.location.hash);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 import React from 'react'
 import type { RouteObject } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { HomeOutlined, HeartOutlined, EnvironmentOutlined } from '@ant-design/icons'
 
 const Home = React.lazy(() => import('./modules/home'))
@@ -48,5 +49,9 @@ export const routes: RouteConfig[] = [
     ),
     label: '旅行足迹',
     icon: <EnvironmentOutlined />,
+  },
+  {
+    path: '*',
+    element: <Navigate to="/" replace />,
   },
 ]
