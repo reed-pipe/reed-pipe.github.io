@@ -194,62 +194,85 @@ export default function Travel() {
           </div>
         )}
 
-        {/* Compact trip list */}
+        {/* Trip list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filteredTrips.length > 0 ? filteredTrips.map(trip => {
             const days = tripDays(trip.startDate, trip.endDate)
             const spotCount = allSpots.filter(s => s.tripId === trip.id).length
+            const photoCount = allSpots.filter(s => s.tripId === trip.id).reduce((n, s) => n + s.photos.length, 0)
             return (
               <div
                 key={trip.id}
                 onClick={() => handleSelectTrip(trip.id!)}
                 style={{
-                  display: 'flex', gap: 12, padding: 10, borderRadius: 14,
-                  cursor: 'pointer', transition: 'all 0.2s ease',
-                  background: 'rgba(0,0,0,0.02)',
-                  border: '1px solid transparent',
+                  borderRadius: 16,
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease',
+                  background: '#fff',
+                  border: '1px solid rgba(0,0,0,0.04)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  overflow: 'hidden',
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = '#fff'
-                  e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'
-                  e.currentTarget.style.borderColor = `${colorPrimary}25`
+                  e.currentTarget.style.boxShadow = `0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px ${colorPrimary}20`
+                  e.currentTarget.style.transform = 'translateY(-1px)'
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.background = 'rgba(0,0,0,0.02)'
-                  e.currentTarget.style.boxShadow = 'none'
-                  e.currentTarget.style.borderColor = 'transparent'
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'
+                  e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                <div style={{
-                  width: 52, height: 52, borderRadius: 12, overflow: 'hidden', flexShrink: 0,
-                  background: `${colorPrimary}10`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {trip.coverPhoto ? (
+                {/* Cover photo strip */}
+                {trip.coverPhoto && (
+                  <div style={{ height: 80, overflow: 'hidden', position: 'relative' }}>
                     <img src={trip.coverPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontSize: 22, opacity: 0.6 }}>{'\uD83D\uDDFA\uFE0F'}</span>
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.15))',
+                    }} />
+                  </div>
+                )}
+                <div style={{ padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center' }}>
+                  {!trip.coverPhoto && (
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                      background: `linear-gradient(135deg, ${colorPrimary}15, ${colorPrimary}08)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span style={{ fontSize: 20, opacity: 0.6 }}>{'\uD83D\uDDFA\uFE0F'}</span>
+                    </div>
                   )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {trip.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#888', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>{trip.destination}</span>
-                    <span style={{ color: '#d9d9d9' }}>·</span>
-                    <span>{days}{'\u5929'}</span>
-                    {spotCount > 0 && (
-                      <>
-                        <span style={{ color: '#d9d9d9' }}>·</span>
-                        <span>{spotCount}个地点</span>
-                      </>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#bbb', marginTop: 2 }}>
-                    {formatDateRange(trip.startDate, trip.endDate)}
-                    {trip.rating != null && trip.rating > 0 && (
-                      <span style={{ marginLeft: 6, color: '#faad14' }}>{'★'.repeat(trip.rating)}</span>
-                    )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {trip.title}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                      <span style={{
+                        fontSize: 11, padding: '1px 8px', borderRadius: 10,
+                        background: `${colorPrimary}10`, color: colorPrimary, fontWeight: 500,
+                      }}>
+                        {trip.destination}
+                      </span>
+                      <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: '#f5f5f5', color: '#888' }}>
+                        {days}{'\u5929'}
+                      </span>
+                      {spotCount > 0 && (
+                        <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: '#f5f5f5', color: '#888' }}>
+                          {spotCount}地点
+                        </span>
+                      )}
+                      {photoCount > 0 && (
+                        <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: '#f5f5f5', color: '#888' }}>
+                          {photoCount}照片
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#bbb', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {formatDateRange(trip.startDate, trip.endDate)}
+                      {trip.rating != null && trip.rating > 0 && (
+                        <span style={{ color: '#faad14', letterSpacing: -1 }}>{'★'.repeat(trip.rating)}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -260,7 +283,7 @@ export default function Travel() {
             </div>
           ) : (
             <div style={{ padding: 48, textAlign: 'center' }}>
-              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>{'\uD83C\uDF0D'}</div>
+              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.25 }}>{'\uD83C\uDF0D'}</div>
               <Text type="secondary">{'\u8FD8\u6CA1\u6709\u65C5\u884C\u8BB0\u5F55'}</Text>
             </div>
           )}

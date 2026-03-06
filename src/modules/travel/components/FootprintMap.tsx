@@ -410,24 +410,39 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
     [displayMarkers],
   )
 
-  // Coords to fit bounds: highlighted trip or all
+  // Coords to fit bounds: highlighted trip (including departure) or all
   const fitCoords = useMemo<[number, number][]>(() => {
     if (highlightTripId != null) {
-      const hCoords = displayMarkers
-        .filter(m => m.tripId === highlightTripId)
-        .map(m => [m.lat, m.lng] as [number, number])
+      const trip = tripMap.get(highlightTripId)
+      const hCoords: [number, number][] = []
+      if (trip?.departureLat != null && trip?.departureLng != null) {
+        const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
+        hCoords.push([dLat, dLng])
+      }
+      for (const m of displayMarkers) {
+        if (m.tripId === highlightTripId) hCoords.push([m.lat, m.lng])
+      }
       return hCoords.length > 0 ? hCoords : displayCoords
     }
     return displayCoords
-  }, [highlightTripId, displayMarkers, displayCoords])
+  }, [highlightTripId, displayMarkers, displayCoords, tripMap, provider])
 
-  // Route polyline for highlighted trip
+  // Route polyline for highlighted trip (including departure)
   const highlightRoute = useMemo<[number, number][]>(() => {
     if (highlightTripId == null) return []
-    return displayMarkers
-      .filter(m => m.tripId === highlightTripId)
-      .map(m => [m.lat, m.lng] as [number, number])
-  }, [highlightTripId, displayMarkers])
+    const trip = tripMap.get(highlightTripId)
+    const points: [number, number][] = []
+    // Include departure point
+    if (trip?.departureLat != null && trip?.departureLng != null) {
+      const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
+      points.push([dLat, dLng])
+    }
+    // Add spots
+    for (const m of displayMarkers) {
+      if (m.tripId === highlightTripId) points.push([m.lat, m.lng])
+    }
+    return points
+  }, [highlightTripId, displayMarkers, tripMap, provider])
 
   const center: [number, number] = displayCoords.length > 0
     ? [displayCoords.reduce((s, c) => s + c[0], 0) / displayCoords.length,
@@ -482,6 +497,22 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
             </CircleMarker>
           )
         })}
+
+        {/* Departure marker for highlighted trip */}
+        {showStaticMarkers && highlightTripId != null && (() => {
+          const trip = tripMap.get(highlightTripId)
+          if (!trip?.departureLat || !trip?.departureLng) return null
+          const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
+          return (
+            <CircleMarker
+              center={[dLat, dLng]}
+              radius={8}
+              pathOptions={{ color: '#faad14', fillColor: '#faad14', fillOpacity: 0.9, weight: 2 }}
+            >
+              <Popup><b>{trip.departureName || '出发地'}</b></Popup>
+            </CircleMarker>
+          )
+        })()}
 
         {/* Route line for highlighted trip */}
         {showStaticMarkers && highlightRoute.length > 1 && (
