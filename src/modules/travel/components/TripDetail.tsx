@@ -34,7 +34,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   const [editingSpot, setEditingSpot] = useState<TripSpot | null>(null)
   const [quickData, setQuickData] = useState<SpotInitialData | null>(null)
   const db = useDb()
-  const { token: { colorTextSecondary } } = theme.useToken()
+  const { token: { colorTextSecondary, colorPrimary } } = theme.useToken()
 
   const days = tripDays(trip.startDate, trip.endDate)
   const spotCostTotal = spots.reduce((s, sp) => s + (sp.cost ?? 0), 0)
@@ -87,43 +87,36 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
     })
   }, [])
 
-  /** Quick check-in: dynamically create input to ensure mobile compatibility */
-  const handleQuickCheckin = useCallback(() => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.capture = 'environment'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
+  /** Quick check-in: handle file from native label→input */
+  const handleQuickCapture = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
 
-      message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
+    message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
 
-      const [compressed, location] = await Promise.all([
-        compressImage(file, 800, 0.7),
-        getGeoLocation(),
-      ])
+    const [compressed, location] = await Promise.all([
+      compressImage(file, 800, 0.7),
+      getGeoLocation(),
+    ])
 
-      message.destroy('quickCheckin')
-      if (location) {
-        message.success('已获取当前位置')
-      } else {
-        message.warning('无法获取位置，请手动搜索')
-      }
-
-      // Clamp today to trip date range
-      const today = new Date().toISOString().slice(0, 10)
-      const date = today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
-
-      setQuickData({
-        photos: [compressed],
-        location: location ?? undefined,
-        date,
-      })
-      setEditingSpot(null)
-      setSpotFormOpen(true)
+    message.destroy('quickCheckin')
+    if (location) {
+      message.success('已获取当前位置')
+    } else {
+      message.warning('无法获取位置，请手动搜索')
     }
-    input.click()
+
+    const today = new Date().toISOString().slice(0, 10)
+    const date = today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
+
+    setQuickData({
+      photos: [compressed],
+      location: location ?? undefined,
+      date,
+    })
+    setEditingSpot(null)
+    setSpotFormOpen(true)
   }, [getGeoLocation, trip.startDate, trip.endDate])
 
   return (
@@ -181,14 +174,32 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text strong style={{ fontSize: 15 }}>打卡点 ({spots.length})</Text>
         <Space size={8}>
-          <Button
-            type="primary"
-            size="small"
-            icon={<CameraOutlined />}
-            onClick={handleQuickCheckin}
+          {/* Native label→input: works in iOS PWA standalone mode */}
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '0 8px',
+              height: 24,
+              fontSize: 14,
+              borderRadius: 6,
+              background: colorPrimary,
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 400,
+            }}
           >
+            <CameraOutlined />
             快速打卡
-          </Button>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleQuickCapture}
+              style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap' }}
+            />
+          </label>
           <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingSpot(null); setQuickData(null); setSpotFormOpen(true) }}>
             添加
           </Button>
