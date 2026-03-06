@@ -48,6 +48,11 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
   const wrapperRef = useRef<HTMLDivElement>(null)
   const { token: { colorPrimary, colorBgElevated, colorBorder, borderRadiusLG, colorTextSecondary } } = theme.useToken()
 
+  // 清理防抖定时器
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [])
+
   // 点击外部关闭下拉
   useEffect(() => {
     const handler = (e: MouseEvent) => {

@@ -51,9 +51,9 @@ export default function FootprintMap({ trips, spots, height = 480 }: Props) {
 
   const markersJs = markers
     .map((m) => {
-      const name = m.name.replace(/`/g, "'").replace(/\\/g, '')
-      const tripName = m.tripName.replace(/`/g, "'").replace(/\\/g, '')
-      return `L.circleMarker([${m.lat},${m.lng}],{radius:6,color:'${colorPrimary}',fillColor:'${colorPrimary}',fillOpacity:0.7}).addTo(map).bindPopup(\`<b>${name}</b><br/>${tripName}<br/>${m.date}\`);`
+      const safeName = JSON.stringify(m.name)
+      const safeTripName = JSON.stringify(m.tripName)
+      return `L.circleMarker([${m.lat},${m.lng}],{radius:6,color:'${colorPrimary}',fillColor:'${colorPrimary}',fillOpacity:0.7}).addTo(map).bindPopup('<b>'+${safeName}+'</b><br/>'+${safeTripName}+'<br/>${m.date}');`
     })
     .join('\n')
 

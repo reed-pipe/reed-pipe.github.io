@@ -66,7 +66,8 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
   const markersJs = routePoints.map((p, i) => {
     const label = p.isHome ? '🏠' : String(i)
     const size = p.isHome ? 28 : 22
-    return `L.marker([${p.lat},${p.lng}],{icon:L.divIcon({className:'',html:'<div style="width:${size}px;height:${size}px;border-radius:50%;background:${p.isHome ? '#faad14' : colorPrimary};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${p.isHome ? 16 : 12}px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${label}</div>',iconSize:[${size},${size}],iconAnchor:[${size / 2},${size / 2}]})}).addTo(map).bindPopup('<b>${p.name.replace(/'/g, "\\'")}</b>');`
+    const safeName = JSON.stringify(p.name)
+    return `L.marker([${p.lat},${p.lng}],{icon:L.divIcon({className:'',html:'<div style="width:${size}px;height:${size}px;border-radius:50%;background:${p.isHome ? '#faad14' : colorPrimary};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${p.isHome ? 16 : 12}px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${label}</div>',iconSize:[${size},${size}],iconAnchor:[${size / 2},${size / 2}]})}).addTo(map).bindPopup('<b>'+${safeName}+'</b>');`
   }).join('\n')
 
   // 路线段信息（每段的交通 emoji）

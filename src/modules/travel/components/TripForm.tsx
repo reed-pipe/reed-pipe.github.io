@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Modal, Form, Input, DatePicker, InputNumber, Rate, Select, Upload, message } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import type { UploadFile } from 'antd'
@@ -30,16 +30,6 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
   const [destination, setDestination] = useState<LocationValue | null>(null)
   const [departure, setDeparture] = useState<LocationValue | null>(null)
   const db = useDb()
-
-  // 加载默认出发地
-  useEffect(() => {
-    db.kv.get('default_departure').then((item) => {
-      if (item?.value) {
-        const val = item.value as { name: string; lat: number; lng: number }
-        setDeparture({ lat: val.lat, lng: val.lng, address: val.name })
-      }
-    })
-  }, [db])
 
   const handleOpen = (isOpen: boolean) => {
     if (isOpen) {
