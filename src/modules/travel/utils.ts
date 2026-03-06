@@ -68,8 +68,9 @@ export function computeStats(trips: Trip[], spots: TripSpot[]) {
 }
 
 /**
- * 弹出系统文件选择器（兼容 MIUI PWA standalone 模式）。
- * 动态创建 input 元素并追加到 body，避免隐藏 input 在部分 WebView 不触发的问题。
+ * 弹出系统文件选择器（兼容 PWA standalone 模式）。
+ * 动态创建 input 并同步调用 click()，确保在用户手势调用栈内触发，
+ * 否则 Android WebView 会拒绝弹出文件选择器。
  */
 export function pickImage(multiple = false): Promise<File[]> {
   return new Promise((resolve) => {
@@ -77,18 +78,14 @@ export function pickImage(multiple = false): Promise<File[]> {
     input.type = 'file'
     input.accept = 'image/*'
     if (multiple) input.multiple = true
-    // Off-screen but not hidden — MIUI needs the element to be "visible"
-    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;'
+    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;'
     document.body.appendChild(input)
 
     let resolved = false
-    const cleanup = () => {
-      if (document.body.contains(input)) document.body.removeChild(input)
-    }
     const done = (files: File[]) => {
       if (resolved) return
       resolved = true
-      cleanup()
+      if (document.body.contains(input)) document.body.removeChild(input)
       resolve(files)
     }
 
@@ -97,15 +94,12 @@ export function pickImage(multiple = false): Promise<File[]> {
     })
 
     // Fallback: if user cancels, resolve empty after focus returns
-    const onFocus = () => {
-      setTimeout(() => {
-        if (!resolved) done([])
-      }, 600)
-    }
-    window.addEventListener('focus', onFocus, { once: true })
+    window.addEventListener('focus', () => {
+      setTimeout(() => { if (!resolved) done([]) }, 600)
+    }, { once: true })
 
-    // Small delay for WebView compatibility
-    requestAnimationFrame(() => input.click())
+    // MUST be synchronous — no rAF/setTimeout, or PWA WebView rejects it
+    input.click()
   })
 }
 
