@@ -7,7 +7,7 @@ import { useMapProvider, getTileLayerJs, toDisplayCoord } from '../mapConfig'
 interface Props {
   trips: Trip[]
   spots: TripSpot[]
-  height?: number
+  height?: number | string
 }
 
 export default function FootprintMap({ trips, spots, height = 480 }: Props) {
@@ -178,6 +178,7 @@ window.addEventListener('message',function(e){
 });
 
 map.whenReady(function(){
+  setTimeout(function(){ map.invalidateSize(); map.fitBounds(bounds.pad(0.15)); },200);
   window.parent.postMessage({type:'footprint-map-ready'},'*');
 });
 <\\/script>

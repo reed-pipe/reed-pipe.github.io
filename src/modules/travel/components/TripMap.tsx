@@ -180,6 +180,11 @@ window.addEventListener('message',function(e){
 
 // Notify parent that map is ready
 map.whenReady(function(){
+  setTimeout(function(){
+    map.invalidateSize();
+    if(coords.length>1) map.fitBounds(L.latLngBounds(coords).pad(0.15));
+    else if(coords.length===1) map.setView(coords[0],12);
+  },200);
   window.parent.postMessage({type:'map-ready'},'*');
 });
 <\/script>

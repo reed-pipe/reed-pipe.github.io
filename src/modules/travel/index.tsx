@@ -76,6 +76,8 @@ export default function Travel() {
   const renderContent = () => {
     // 足迹地图视图
     if (showFootprint) {
+      // 动态计算地图高度填满视口：减去 header(64) + content margin/padding + 操作栏 + 底部文字
+      const mapHeight = isMobile ? 'calc(100vh - 190px)' : 'calc(100vh - 250px)'
       return (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -85,7 +87,7 @@ export default function Travel() {
             <Text strong style={{ fontSize: 16 }}>我的足迹地图</Text>
             <div style={{ width: 60 }} />
           </div>
-          <FootprintMap trips={trips} spots={allSpots} height={isMobile ? 400 : 520} />
+          <FootprintMap trips={trips} spots={allSpots} height={mapHeight} />
           <Text type="secondary" style={{ textAlign: 'center', display: 'block' }}>
             共 {allSpots.filter((s) => s.lat && s.lng).length} 个坐标点
           </Text>
