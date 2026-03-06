@@ -126,7 +126,6 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
           <LocationPicker
             value={destination}
             onChange={setDestination}
-            compact
             placeholder="搜索目的地（如：大阪、巴黎、西湖）"
           />
         </Form.Item>
