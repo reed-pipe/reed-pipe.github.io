@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Button, Space, Tabs, Typography, Tag, Rate, Modal, message, theme } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -8,12 +8,13 @@ import {
   EnvironmentOutlined,
   CalendarOutlined,
   DollarOutlined,
+  CameraOutlined,
 } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { formatDateRange, tripDays, formatCost } from '../utils'
+import { formatDateRange, tripDays, formatCost, compressImage } from '../utils'
 import SpotTimeline from './SpotTimeline'
-import SpotForm from './SpotForm'
+import SpotForm, { type SpotInitialData } from './SpotForm'
 import TripMap from './TripMap'
 import PhotoGallery from './PhotoGallery'
 
@@ -31,6 +32,8 @@ interface Props {
 export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onDataChanged }: Props) {
   const [spotFormOpen, setSpotFormOpen] = useState(false)
   const [editingSpot, setEditingSpot] = useState<TripSpot | null>(null)
+  const [quickData, setQuickData] = useState<SpotInitialData | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const db = useDb()
   const { token: { colorTextSecondary } } = theme.useToken()
 
@@ -56,8 +59,72 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
 
   const handleEditSpot = (spot: TripSpot) => {
     setEditingSpot(spot)
+    setQuickData(null)
     setSpotFormOpen(true)
   }
+
+  /** Get current GPS position */
+  const getGeoLocation = useCallback((): Promise<{ lat: number; lng: number; address: string } | null> => {
+    if (!navigator.geolocation) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude: lat, longitude: lng } = pos.coords
+          // Reverse geocode
+          let address = ''
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh`,
+              { headers: { 'User-Agent': 'PersonalAssistant/1.0' } },
+            )
+            const data = await res.json()
+            address = data.display_name ?? ''
+          } catch { /* ignore */ }
+          resolve({ lat, lng, address })
+        },
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000 },
+      )
+    })
+  }, [])
+
+  /** Quick check-in: camera + GPS */
+  const handleQuickCheckin = () => {
+    cameraInputRef.current?.click()
+  }
+
+  const handleCameraCapture = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset input so same file can be selected again
+    e.target.value = ''
+
+    message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
+
+    const [compressed, location] = await Promise.all([
+      compressImage(file, 800, 0.7),
+      getGeoLocation(),
+    ])
+
+    message.destroy('quickCheckin')
+    if (location) {
+      message.success('已获取当前位置')
+    } else {
+      message.warning('无法获取位置，请手动搜索')
+    }
+
+    // Clamp today to trip date range
+    const today = new Date().toISOString().slice(0, 10)
+    const date = today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
+
+    setQuickData({
+      photos: [compressed],
+      location: location ?? undefined,
+      date,
+    })
+    setEditingSpot(null)
+    setSpotFormOpen(true)
+  }, [getGeoLocation, trip.startDate, trip.endDate])
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -113,10 +180,29 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       {/* 打卡点管理 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text strong style={{ fontSize: 15 }}>打卡点 ({spots.length})</Text>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditingSpot(null); setSpotFormOpen(true) }}>
-          添加
-        </Button>
+        <Space size={8}>
+          <Button
+            type="primary"
+            size="small"
+            icon={<CameraOutlined />}
+            onClick={handleQuickCheckin}
+          >
+            快速打卡
+          </Button>
+          <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingSpot(null); setQuickData(null); setSpotFormOpen(true) }}>
+            添加
+          </Button>
+        </Space>
       </div>
+      {/* Hidden camera input for quick check-in */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={handleCameraCapture}
+      />
 
       <Tabs
         defaultActiveKey="timeline"
@@ -163,7 +249,8 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
         tripEndDate={trip.endDate}
         spot={editingSpot}
         nextSortOrder={nextSortOrder}
-        onClose={() => setSpotFormOpen(false)}
+        initialData={!editingSpot ? quickData : null}
+        onClose={() => { setSpotFormOpen(false); setQuickData(null) }}
         onSaved={onDataChanged}
       />
     </Space>

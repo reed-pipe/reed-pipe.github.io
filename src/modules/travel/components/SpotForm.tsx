@@ -11,6 +11,12 @@ import LocationPicker, { type LocationValue } from './LocationPicker'
 const { TextArea } = Input
 const MAX_PHOTOS = 5
 
+export interface SpotInitialData {
+  location?: LocationValue
+  photos?: string[]
+  date?: string
+}
+
 interface Props {
   open: boolean
   tripId: number
@@ -18,11 +24,12 @@ interface Props {
   tripEndDate: string
   spot?: TripSpot | null
   nextSortOrder: number
+  initialData?: SpotInitialData | null
   onClose: () => void
   onSaved: () => void
 }
 
-export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spot, nextSortOrder, onClose, onSaved }: Props) {
+export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spot, nextSortOrder, initialData, onClose, onSaved }: Props) {
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const [photos, setPhotos] = useState<string[]>([])
@@ -47,8 +54,17 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         )
       } else {
         form.resetFields()
-        setPhotos([])
-        setLocation(null)
+        // Pre-fill from initialData (quick check-in)
+        if (initialData) {
+          if (initialData.date) {
+            form.setFieldValue('date', dayjs(initialData.date))
+          }
+          setPhotos(initialData.photos ?? [])
+          setLocation(initialData.location ?? null)
+        } else {
+          setPhotos([])
+          setLocation(null)
+        }
       }
     }
   }
@@ -153,6 +169,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
             }}
             maxCount={MAX_PHOTOS}
             accept="image/*"
+            capture="environment"
           >
             {photos.length < MAX_PHOTOS && (
               <div>
