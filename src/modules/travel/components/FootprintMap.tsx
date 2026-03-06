@@ -27,6 +27,50 @@ interface Props {
   onTripClick?: (tripId: number) => void
 }
 
+// --------------- Bezier helpers ---------------
+
+/** Quadratic bezier interpolation */
+function quadBezier(t: number, p0: number, p1: number, p2: number): number {
+  const mt = 1 - t
+  return mt * mt * p0 + 2 * mt * t * p1 + t * t * p2
+}
+
+/** Compute a control point for a curved arc between two coordinates */
+function bezierControl(
+  from: [number, number],
+  to: [number, number],
+  transport?: TransportType,
+): [number, number] {
+  const [lat1, lng1] = from
+  const [lat2, lng2] = to
+  const midLat = (lat1 + lat2) / 2
+  const midLng = (lng1 + lng2) / 2
+
+  const dx = lng2 - lng1
+  const dy = lat2 - lat1
+  const len = Math.sqrt(dx * dx + dy * dy)
+  if (len < 0.001) return [midLat, midLng]
+
+  // Curvature factor by transport type
+  let factor: number
+  switch (transport) {
+    case 'plane': factor = 0.3; break
+    case 'ship': factor = 0.22; break
+    case 'train': factor = 0.15; break
+    case 'car': case 'bus': factor = 0.12; break
+    default: factor = 0.08; break
+  }
+
+  // Perpendicular offset (rotate direction 90 degrees)
+  const offset = len * factor
+  const perpLat = (-dx / len) * offset
+  const perpLng = (dy / len) * offset
+
+  return [midLat + perpLat, midLng + perpLng]
+}
+
+// --------------- Map helpers ---------------
+
 /** Fit bounds when data/provider changes */
 function BoundsFitter({ coords }: { coords: [number, number][] }) {
   const map = useMap()
@@ -41,12 +85,8 @@ function BoundsFitter({ coords }: { coords: [number, number][] }) {
   return null
 }
 
-/**
- * Footprint animation with transport emoji + map following.
- * - Same-trip transitions: emoji moves smoothly along the path (rAF), polyline trail drawn behind
- * - Different-trip transitions: map flies to the new location
- * - Map pans to follow the moving emoji in real time
- */
+// --------------- Footprint Animator ---------------
+
 function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
   markers: MarkerData[]
   playing: boolean
@@ -61,9 +101,10 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
     idx: 0,
     step: 0,
     totalSteps: 0,
-    dLat: 0,
-    dLng: 0,
-    fromPos: null as L.LatLng | null,
+    // Bezier params for current segment
+    fromLat: 0, fromLng: 0,
+    ctrlLat: 0, ctrlLng: 0,
+    toLat: 0, toLng: 0,
     currentLine: null as L.Polyline | null,
     currentMover: null as L.Marker | null,
     rafId: null as number | null,
@@ -84,7 +125,6 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
     s.started = false
     s.currentLine = null
     s.currentMover = null
-    s.fromPos = null
   }, [map])
 
   useEffect(() => {
@@ -108,61 +148,89 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
       }
     }
 
-    /** Show the very first marker and fly to it */
+    /** Show the very first marker, fly to it, pause to let user see */
     function showFirstMarker() {
       if (markers.length === 0) { onDoneRef.current(); return }
       const m = markers[0]!
       const pos = L.latLng(m.lat, m.lng)
 
-      addCircleMarker(m, pos)
-      s.fromPos = pos
-      s.idx = 1
+      // Fly to first point
+      map.flyTo(pos, Math.max(map.getZoom(), 10), { duration: 0.8 })
 
-      map.flyTo(pos, Math.max(map.getZoom(), 10), { duration: 0.6 })
-      s.timerId = setTimeout(processNext, 700)
+      s.timerId = setTimeout(() => {
+        addPulse(pos)
+        const cm = addCircleMarker(m, pos)
+        cm.openPopup()
+
+        s.fromLat = m.lat
+        s.fromLng = m.lng
+        s.idx = 1
+
+        // Pause to let user see the first point
+        s.timerId = setTimeout(() => {
+          cm.closePopup()
+          processNext()
+        }, 1500)
+      }, 900)
     }
 
-    /** Process the next marker: animate or fly depending on trip continuity */
+    /** Decide how to handle the next marker */
     function processNext() {
       const s = ref.current
       if (s.idx >= markers.length) {
-        // Animation complete — zoom out to show all
+        // Animation complete — zoom out to show everything
         if (markers.length > 1) {
           const allCoords = markers.map(m => L.latLng(m.lat, m.lng))
-          map.flyToBounds(L.latLngBounds(allCoords).pad(0.15), { duration: 1 })
+          map.flyToBounds(L.latLngBounds(allCoords).pad(0.15), { duration: 1.2 })
         }
-        s.timerId = setTimeout(() => onDoneRef.current(), 1100)
+        s.timerId = setTimeout(() => onDoneRef.current(), 1400)
         return
       }
 
       const m = markers[s.idx]!
       const prev = markers[s.idx - 1]
-      const to = L.latLng(m.lat, m.lng)
       const sameTripAsPrev = prev != null && m.tripId === prev.tripId
 
       if (!sameTripAsPrev) {
-        // Different trip — fly to new location, then place marker
-        map.flyTo(to, Math.max(10, Math.min(map.getZoom(), 12)), { duration: 1 })
+        // Different trip — fly to new location
+        const to = L.latLng(m.lat, m.lng)
+        map.flyTo(to, Math.max(10, Math.min(map.getZoom(), 12)), { duration: 1.2 })
         s.timerId = setTimeout(() => {
-          addCircleMarker(m, to)
-          s.fromPos = to
+          addPulse(to)
+          const cm = addCircleMarker(m, to)
+          cm.openPopup()
+
+          s.fromLat = m.lat
+          s.fromLng = m.lng
           s.idx++
-          s.timerId = setTimeout(processNext, 400)
-        }, 1100)
+
+          // Longer pause between trips
+          s.timerId = setTimeout(() => {
+            cm.closePopup()
+            processNext()
+          }, 2000)
+        }, 1300)
       } else {
-        // Same trip — animate with transport emoji
-        animateSegment(s.fromPos!, to, m)
+        // Same trip — animate with bezier curve + transport emoji
+        const from = L.latLng(s.fromLat, s.fromLng)
+        const to = L.latLng(m.lat, m.lng)
+        animateSegment(from, to, m)
       }
     }
 
-    /** Smoothly animate a transport emoji from `from` to `to` */
+    /** Set up bezier curve animation between two points */
     function animateSegment(from: L.LatLng, to: L.LatLng, m: MarkerData) {
       const s = ref.current
       const dist = from.distanceTo(to)
-      s.totalSteps = Math.max(40, Math.min(150, Math.round(dist / 3000)))
-      s.dLat = (to.lat - from.lat) / s.totalSteps
-      s.dLng = (to.lng - from.lng) / s.totalSteps
-      s.fromPos = from
+
+      // Slower: ~1.3s to 5s per segment
+      s.totalSteps = Math.max(80, Math.min(300, Math.round(dist / 1500)))
+
+      // Bezier control point for curved path
+      const ctrl = bezierControl([from.lat, from.lng], [to.lat, to.lng], m.transport)
+      s.fromLat = from.lat; s.fromLng = from.lng
+      s.ctrlLat = ctrl[0]; s.ctrlLng = ctrl[1]
+      s.toLat = to.lat; s.toLng = to.lng
       s.step = 0
 
       const emoji = getTransportEmoji(m.transport)
@@ -180,12 +248,13 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
       tick()
     }
 
-    /** RAF tick: move emoji one step, draw trail, pan map */
+    /** RAF tick: advance one step along bezier curve */
     function tick() {
       const s = ref.current
       s.step++
-      const lat = s.fromPos!.lat + s.dLat * s.step
-      const lng = s.fromPos!.lng + s.dLng * s.step
+      const t = s.step / s.totalSteps
+      const lat = quadBezier(t, s.fromLat, s.ctrlLat, s.toLat)
+      const lng = quadBezier(t, s.fromLng, s.ctrlLng, s.toLng)
       const pos = L.latLng(lat, lng)
 
       s.currentLine!.addLatLng(pos)
@@ -197,33 +266,72 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
       if (s.step < s.totalSteps) {
         s.rafId = requestAnimationFrame(tick)
       } else {
-        // Arrived — remove mover, show circle marker
-        const m = markers[s.idx]!
-        if (s.currentMover) {
-          map.removeLayer(s.currentMover)
-          const mi = s.layers.indexOf(s.currentMover)
-          if (mi >= 0) s.layers.splice(mi, 1)
-          s.currentMover = null
-        }
-
-        const endPos = L.latLng(m.lat, m.lng)
-        addCircleMarker(m, endPos)
-        s.fromPos = endPos
-        s.idx++
-        s.step = 0
-
-        const nextM: MarkerData | undefined = markers[s.idx]
-        const delay = (nextM && nextM.tripId !== m.tripId) ? 600 : 300
-        s.timerId = setTimeout(processNext, delay)
+        arriveAt(markers[s.idx]!)
       }
     }
 
-    /** Helper: add a permanent circle marker at a position */
-    function addCircleMarker(m: MarkerData, pos: L.LatLng) {
+    /** Handle arrival: pulse, popup, pause, then continue */
+    function arriveAt(m: MarkerData) {
+      const s = ref.current
+
+      // Remove mover emoji
+      if (s.currentMover) {
+        map.removeLayer(s.currentMover)
+        const mi = s.layers.indexOf(s.currentMover)
+        if (mi >= 0) s.layers.splice(mi, 1)
+        s.currentMover = null
+      }
+
+      const endPos = L.latLng(m.lat, m.lng)
+
+      // Pulse effect at arrival
+      addPulse(endPos)
+
+      // Place permanent circle marker with popup
+      const cm = addCircleMarker(m, endPos)
+      cm.openPopup()
+
+      s.fromLat = m.lat
+      s.fromLng = m.lng
+      s.idx++
+      s.step = 0
+
+      // Check if next marker is a different trip
+      const nextM: MarkerData | undefined = markers[s.idx]
+      const isTripChange = nextM != null && nextM.tripId !== m.tripId
+      const isLast = !nextM
+      const delay = isLast ? 2000 : isTripChange ? 2000 : 1200
+
+      s.timerId = setTimeout(() => {
+        cm.closePopup()
+        processNext()
+      }, delay)
+    }
+
+    /** Add a pulse animation at a position */
+    function addPulse(pos: L.LatLng) {
+      const pulseIcon = L.divIcon({
+        className: '',
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:${colorPrimary};opacity:0.7;animation:fpPulse 0.8s ease-out"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      })
+      const pulse = L.marker(pos, { icon: pulseIcon, zIndexOffset: 900 }).addTo(map)
+      ref.current.layers.push(pulse)
+      setTimeout(() => {
+        map.removeLayer(pulse)
+        const pi = ref.current.layers.indexOf(pulse)
+        if (pi >= 0) ref.current.layers.splice(pi, 1)
+      }, 800)
+    }
+
+    /** Add a permanent circle marker */
+    function addCircleMarker(m: MarkerData, pos: L.LatLng): L.CircleMarker {
       const cm = L.circleMarker(pos, {
         radius: 7, color: colorPrimary, fillColor: colorPrimary, fillOpacity: 0.8,
       }).addTo(map).bindPopup(`<b>${m.name}</b><br/>${m.tripName}<br/>${m.date}`)
       ref.current.layers.push(cm)
+      return cm
     }
 
     return () => {
@@ -237,6 +345,8 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
   return null
 }
 
+// --------------- Glass style ---------------
+
 const glassStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.88)',
   backdropFilter: 'blur(12px)',
@@ -246,6 +356,8 @@ const glassStyle: React.CSSProperties = {
   border: '1px solid rgba(0,0,0,0.06)',
   padding: '6px 14px',
 }
+
+// --------------- Main component ---------------
 
 export default function FootprintMap({ trips, spots, height = 480, spotCount, highlightTripId, onTripClick }: Props) {
   const { token: { colorPrimary } } = theme.useToken()
@@ -332,6 +444,9 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
 
   return (
     <div style={{ position: 'relative', height, overflow: 'hidden' }}>
+      {/* Pulse animation CSS */}
+      <style>{`@keyframes fpPulse{0%{transform:scale(1);opacity:0.7}100%{transform:scale(3);opacity:0}}`}</style>
+
       <MapContainer
         key={provider}
         center={center}
