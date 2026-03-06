@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Space, Select, Typography, Grid, Empty, Modal, message } from 'antd'
+import { Button, Space, Select, Segmented, Typography, Grid, Empty, Modal, message } from 'antd'
 import { PlusOutlined, GlobalOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
@@ -12,6 +12,7 @@ import FootprintMap from './components/FootprintMap'
 import TravelStats from './components/TravelStats'
 import TripMap from './components/TripMap'
 import { exportTravelCSV } from './utils'
+import { useMapProviderPreference, setMapProvider } from './mapConfig'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
@@ -29,6 +30,7 @@ export default function Travel() {
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [yearFilter, setYearFilter] = useState<string | null>(null)
   const [routeTripId, setRouteTripId] = useState<number | null>(null)
+  const mapPref = useMapProviderPreference()
 
   const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
   const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
@@ -110,7 +112,7 @@ export default function Travel() {
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {/* 顶部操作栏 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <Space>
+          <Space wrap>
             <Button icon={<GlobalOutlined />} onClick={() => setShowFootprint(true)}>
               足迹地图
             </Button>
@@ -119,6 +121,16 @@ export default function Travel() {
                 {!isMobile && '导出'}
               </Button>
             )}
+            <Segmented
+              size="small"
+              options={[
+                { label: '自动', value: 'auto' },
+                { label: 'OSM', value: 'osm' },
+                { label: '高德', value: 'amap' },
+              ]}
+              value={mapPref}
+              onChange={(v) => setMapProvider(v as 'auto' | 'osm' | 'amap')}
+            />
           </Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingTrip(null); setFormOpen(true) }}>
             新建旅行

@@ -3,6 +3,7 @@ import { Button, Empty, theme } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { sortSpots, getTransportEmoji } from '../utils'
+import { useMapProvider, getTileLayerJs, toDisplayCoord } from '../mapConfig'
 
 interface Props {
   trip: Trip
@@ -10,10 +11,9 @@ interface Props {
   height?: number
 }
 
-const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-
 export default function TripMap({ trip, spots, height = 400 }: Props) {
   const { token: { colorPrimary } } = theme.useToken()
+  const [provider] = useMapProvider()
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [animating, setAnimating] = useState(false)
   const [hasPlayed, setHasPlayed] = useState(false)
@@ -58,19 +58,20 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
     return <Empty description="暂无坐标数据，添加打卡点时搜索位置即可在地图上显示" style={{ padding: 32 }} />
   }
 
-  const coordsJs = JSON.stringify(routePoints.map((p) => [p.lat, p.lng]))
+  const coordsJs = JSON.stringify(routePoints.map((p) => toDisplayCoord(p.lat, p.lng, provider)))
 
   const markersJs = routePoints.map((p, i) => {
     const label = p.isHome ? '🏠' : String(i)
     const size = p.isHome ? 28 : 22
     const safeName = JSON.stringify(p.name)
-    return `L.marker([${p.lat},${p.lng}],{icon:L.divIcon({className:'',html:'<div style="width:${size}px;height:${size}px;border-radius:50%;background:${p.isHome ? '#faad14' : colorPrimary};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${p.isHome ? 16 : 12}px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${label}</div>',iconSize:[${size},${size}],iconAnchor:[${size / 2},${size / 2}]})}).addTo(map).bindPopup('<b>'+${safeName}+'</b>');`
+    const [dLat, dLng] = toDisplayCoord(p.lat, p.lng, provider)
+    return `L.marker([${dLat},${dLng}],{icon:L.divIcon({className:'',html:'<div style="width:${size}px;height:${size}px;border-radius:50%;background:${p.isHome ? '#faad14' : colorPrimary};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${p.isHome ? 16 : 12}px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${label}</div>',iconSize:[${size},${size}],iconAnchor:[${size / 2},${size / 2}]})}).addTo(map).bindPopup('<b>'+${safeName}+'</b>');`
   }).join('\n')
 
   const segments: { from: [number, number]; to: [number, number]; emoji: string }[] = []
   for (let i = 0; i < routePoints.length - 1; i++) {
     const f = routePoints[i]!, t = routePoints[i + 1]!
-    segments.push({ from: [f.lat, f.lng], to: [t.lat, t.lng], emoji: t.emoji })
+    segments.push({ from: toDisplayCoord(f.lat, f.lng, provider), to: toDisplayCoord(t.lat, t.lng, provider), emoji: t.emoji })
   }
   const segmentsJson = JSON.stringify(segments)
 
@@ -87,7 +88,7 @@ html,body,#map{margin:0;height:100%;width:100%}
 <div id="map"></div>
 <script>
 var map=L.map('map',{zoomControl:true});
-L.tileLayer('${TILE_URL}',{maxZoom:18,attribution:'OSM'}).addTo(map);
+${getTileLayerJs(provider)}.addTo(map);
 
 var coords=${coordsJs};
 var segments=${segmentsJson};

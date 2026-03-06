@@ -1,0 +1,130 @@
+import { useSyncExternalStore } from 'react'
+
+export type MapProvider = 'osm' | 'amap'
+
+const STORAGE_KEY = 'map_provider_preference'
+const listeners = new Set<() => void>()
+
+function subscribe(fn: () => void) {
+  listeners.add(fn)
+  return () => { listeners.delete(fn) }
+}
+
+function notifyChange() {
+  listeners.forEach((fn) => fn())
+}
+
+/** Auto-detect: timezone / language heuristic */
+function detectProvider(): MapProvider {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || tz === 'Asia/Urumqi' || tz === 'Asia/Harbin') {
+      return 'amap'
+    }
+    if (navigator.language?.startsWith('zh')) return 'amap'
+  } catch { /* ignore */ }
+  return 'osm'
+}
+
+export function getMapProvider(): MapProvider {
+  const pref = localStorage.getItem(STORAGE_KEY)
+  if (pref === 'osm' || pref === 'amap') return pref
+  return detectProvider()
+}
+
+export function getMapProviderPreference(): 'auto' | 'osm' | 'amap' {
+  const pref = localStorage.getItem(STORAGE_KEY)
+  if (pref === 'osm' || pref === 'amap') return pref
+  return 'auto'
+}
+
+export function setMapProvider(provider: 'auto' | 'osm' | 'amap') {
+  if (provider === 'auto') {
+    localStorage.removeItem(STORAGE_KEY)
+  } else {
+    localStorage.setItem(STORAGE_KEY, provider)
+  }
+  notifyChange()
+}
+
+export function useMapProvider(): [MapProvider, (p: 'auto' | 'osm' | 'amap') => void] {
+  const provider = useSyncExternalStore(subscribe, () => getMapProvider())
+  return [provider, setMapProvider]
+}
+
+export function useMapProviderPreference(): 'auto' | 'osm' | 'amap' {
+  return useSyncExternalStore(subscribe, () => getMapProviderPreference())
+}
+
+// --------------- Tile Layer ---------------
+
+export function getTileLayerJs(provider: MapProvider): string {
+  if (provider === 'amap') {
+    return `L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{maxZoom:18,subdomains:'1234',attribution:'\\u00a9 \\u9ad8\\u5fb7\\u5730\\u56fe'})`
+  }
+  return `L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'OSM'})`
+}
+
+// --------------- GCJ-02 Coordinate Conversion ---------------
+
+const PI = Math.PI
+const A = 6378245.0
+const EE = 0.00669342162296594323
+
+function outOfChina(lat: number, lng: number): boolean {
+  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
+}
+
+function transformLat(x: number, y: number): number {
+  let r = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
+  r += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0
+  r += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0
+  r += (160.0 * Math.sin(y / 12.0 * PI) + 320.0 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0
+  return r
+}
+
+function transformLng(x: number, y: number): number {
+  let r = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
+  r += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0
+  r += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0
+  r += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0
+  return r
+}
+
+/** WGS-84 -> GCJ-02 */
+export function wgs84ToGcj02(lat: number, lng: number): [number, number] {
+  if (outOfChina(lat, lng)) return [lat, lng]
+  let dLat = transformLat(lng - 105.0, lat - 35.0)
+  let dLng = transformLng(lng - 105.0, lat - 35.0)
+  const radLat = lat / 180.0 * PI
+  let magic = Math.sin(radLat)
+  magic = 1 - EE * magic * magic
+  const sqrtMagic = Math.sqrt(magic)
+  dLat = (dLat * 180.0) / ((A * (1 - EE)) / (magic * sqrtMagic) * PI)
+  dLng = (dLng * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI)
+  return [lat + dLat, lng + dLng]
+}
+
+/** GCJ-02 -> WGS-84 (iterative) */
+export function gcj02ToWgs84(gcjLat: number, gcjLng: number): [number, number] {
+  if (outOfChina(gcjLat, gcjLng)) return [gcjLat, gcjLng]
+  let wLat = gcjLat, wLng = gcjLng
+  for (let i = 0; i < 3; i++) {
+    const [gLat, gLng] = wgs84ToGcj02(wLat, wLng)
+    wLat += gcjLat - gLat
+    wLng += gcjLng - gLng
+  }
+  return [wLat, wLng]
+}
+
+/** Convert WGS-84 coordinate to display coordinate based on provider */
+export function toDisplayCoord(lat: number, lng: number, provider: MapProvider): [number, number] {
+  if (provider === 'amap') return wgs84ToGcj02(lat, lng)
+  return [lat, lng]
+}
+
+/** Convert display coordinate (from map click) back to WGS-84 for storage */
+export function fromDisplayCoord(lat: number, lng: number, provider: MapProvider): [number, number] {
+  if (provider === 'amap') return gcj02ToWgs84(lat, lng)
+  return [lat, lng]
+}

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Input, Spin, Typography, theme } from 'antd'
 import { EnvironmentOutlined, SearchOutlined, AimOutlined } from '@ant-design/icons'
+import { useMapProvider, getTileLayerJs, toDisplayCoord, fromDisplayCoord } from '../mapConfig'
 
 const { Text } = Typography
 
@@ -26,8 +27,6 @@ interface NominatimResult {
   type: string
 }
 
-const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-
 /** Nominatim 搜索（防抖） */
 async function searchLocation(query: string): Promise<NominatimResult[]> {
   if (!query.trim()) return []
@@ -47,6 +46,7 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const { token: { colorPrimary, colorBgElevated, colorBorder, borderRadiusLG, colorTextSecondary } } = theme.useToken()
+  const [provider] = useMapProvider()
 
   // 清理防抖定时器
   useEffect(() => {
@@ -104,34 +104,37 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
 
   // 地图点选的 iframe HTML
   const mapHtml = value
-    ? `<!DOCTYPE html>
+    ? (() => {
+        const [dLat, dLng] = toDisplayCoord(value.lat, value.lng, provider)
+        return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>
 <style>html,body,#map{margin:0;height:100%;width:100%;cursor:crosshair}</style>
 </head><body>
 <div id="map"></div>
 <script>
-var map=L.map('map').setView([${value.lat},${value.lng}],14);
-L.tileLayer('${TILE_URL}',{maxZoom:18}).addTo(map);
-var marker=L.marker([${value.lat},${value.lng}]).addTo(map);
+var map=L.map('map').setView([${dLat},${dLng}],14);
+${getTileLayerJs(provider)}.addTo(map);
+var marker=L.marker([${dLat},${dLng}]).addTo(map);
 map.on('click',function(e){
   marker.setLatLng(e.latlng);
   window.parent.postMessage({type:'map-pick',lat:e.latlng.lat,lng:e.latlng.lng},'*');
 });
-<\/script>
+<\\/script>
 </body></html>`
+      })()
     : null
 
   // 监听 iframe 消息（地图点选）
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'map-pick') {
-        // 反向地理编码获取地址
-        const { lat, lng } = e.data
+        // 将显示坐标转换回 WGS-84 存储
+        const [lat, lng] = fromDisplayCoord(e.data.lat, e.data.lng, provider)
         onChange?.({ lat, lng, address: value?.address ?? '' })
-        // 异步获取地址名称
+        // 异步获取地址名称（Nominatim 使用 WGS-84）
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh`, {
           headers: { 'User-Agent': 'PersonalAssistant/1.0' },
         })
@@ -146,7 +149,7 @@ map.on('click',function(e){
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [onChange, value?.address])
+  }, [onChange, value?.address, provider])
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
