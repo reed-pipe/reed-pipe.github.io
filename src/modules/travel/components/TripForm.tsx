@@ -5,7 +5,7 @@ import type { UploadFile } from 'antd'
 import dayjs from 'dayjs'
 import type { Trip } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { compressImage, pickImage } from '../utils'
+import { compressImage } from '../utils'
 import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
@@ -185,12 +185,19 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
             maxCount={1}
           >
             {!coverPhoto && (
-              <div onClick={async () => {
-                const files = await pickImage()
-                if (files[0]) await handleCoverUpload(files[0])
-              }}>
+              <div style={{ position: 'relative' }}>
                 <PlusOutlined />
                 <div style={{ marginTop: 8, fontSize: 12 }}>上传封面</div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) await handleCoverUpload(file)
+                  }}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', zIndex: 1 }}
+                />
               </div>
             )}
           </Upload>

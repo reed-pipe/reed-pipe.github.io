@@ -12,7 +12,8 @@ import {
 } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { formatDateRange, tripDays, formatCost, compressImage, pickImage } from '../utils'
+import { formatDateRange, tripDays, formatCost, compressImage } from '../utils'
+import type React from 'react'
 import SpotTimeline from './SpotTimeline'
 import SpotForm, { type SpotInitialData } from './SpotForm'
 import TripMap from './TripMap'
@@ -87,10 +88,11 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
     })
   }, [])
 
-  /** Quick check-in: pick image via dynamic input (MIUI PWA compatible) */
-  const handleQuickCapture = useCallback(async () => {
-    const files = await pickImage()
-    const file = files[0]
+  /** Quick check-in: user physically touches native file input */
+  const handleQuickCapture = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // Reset so the same file can be re-selected
+    e.target.value = ''
     if (!file) return
 
     message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
@@ -175,8 +177,8 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
         <Text strong style={{ fontSize: 15 }}>打卡点 ({spots.length})</Text>
         <Space size={8}>
           <div
-            onClick={handleQuickCapture}
             style={{
+              position: 'relative',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
@@ -192,6 +194,12 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           >
             <CameraOutlined />
             快速打卡
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleQuickCapture}
+              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', zIndex: 1 }}
+            />
           </div>
           <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingSpot(null); setQuickData(null); setSpotFormOpen(true) }}>
             添加
