@@ -4,6 +4,7 @@ import L from 'leaflet'
 import { Input, Spin, Typography, theme } from 'antd'
 import { EnvironmentOutlined, SearchOutlined, AimOutlined } from '@ant-design/icons'
 import { useMapProvider, toDisplayCoord, fromDisplayCoord } from '../mapConfig'
+import { searchLocation, reverseGeocode, type GeoSearchResult } from '../geocode'
 import MapTiles from './MapTiles'
 
 const { Text } = Typography
@@ -19,22 +20,6 @@ interface Props {
   onChange?: (value: LocationValue | null) => void
   compact?: boolean
   placeholder?: string
-}
-
-interface NominatimResult {
-  lat: string
-  lon: string
-  display_name: string
-  name: string
-  type: string
-}
-
-async function searchLocation(query: string): Promise<NominatimResult[]> {
-  if (!query.trim()) return []
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&accept-language=zh`
-  const res = await fetch(url, { headers: { 'User-Agent': 'PersonalAssistant/1.0' } })
-  if (!res.ok) return []
-  return res.json()
 }
 
 const pinIcon = (color: string) => L.divIcon({
@@ -67,7 +52,7 @@ function MapUpdater({ center }: { center: [number, number] }) {
 
 export default function LocationPicker({ value, onChange, compact, placeholder }: Props) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<NominatimResult[]>([])
+  const [results, setResults] = useState<GeoSearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
@@ -109,14 +94,9 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
     }, 500)
   }, [])
 
-  const handleSelect = (item: NominatimResult) => {
-    const loc: LocationValue = {
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-      address: item.display_name,
-    }
-    onChange?.(loc)
-    setQuery(item.name || item.display_name.split(',')[0]!)
+  const handleSelect = (item: GeoSearchResult) => {
+    onChange?.({ lat: item.lat, lng: item.lng, address: item.address })
+    setQuery(item.name)
     setShowResults(false)
     setResults([])
   }
@@ -130,14 +110,10 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
   const handleMapPick = useCallback((displayLat: number, displayLng: number) => {
     const [lat, lng] = fromDisplayCoord(displayLat, displayLng, provider)
     onChange?.({ lat, lng, address: value?.address ?? '' })
-    // Reverse geocoding
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh`, {
-      headers: { 'User-Agent': 'PersonalAssistant/1.0' },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.display_name) {
-          onChange?.({ lat, lng, address: data.display_name })
+    reverseGeocode(lat, lng)
+      .then((result) => {
+        if (result?.address) {
+          onChange?.({ lat, lng, address: result.address })
         }
       })
       .catch(() => {})
@@ -191,11 +167,11 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <EnvironmentOutlined style={{ color: colorPrimary, fontSize: 13 }} />
                 <Text strong style={{ fontSize: 13 }}>
-                  {item.name || item.display_name.split(',')[0]}
+                  {item.name}
                 </Text>
               </div>
               <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 2 }} ellipsis>
-                {item.display_name}
+                {item.address}
               </Text>
             </div>
           ))}

@@ -13,6 +13,7 @@ import {
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
 import { formatDateRange, tripDays, formatCost, compressImage } from '../utils'
+import { reverseGeocode } from '../geocode'
 import type React from 'react'
 import SpotTimeline from './SpotTimeline'
 import SpotForm, { type SpotInitialData } from './SpotForm'
@@ -70,15 +71,10 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           const { latitude: lat, longitude: lng } = pos.coords
-          // Reverse geocode
           let address = ''
           try {
-            const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh`,
-              { headers: { 'User-Agent': 'PersonalAssistant/1.0' } },
-            )
-            const data = await res.json()
-            address = data.display_name ?? ''
+            const result = await reverseGeocode(lat, lng)
+            address = result?.address ?? ''
           } catch { /* ignore */ }
           resolve({ lat, lng, address })
         },
