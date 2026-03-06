@@ -3,9 +3,20 @@ import { MapContainer, CircleMarker, Polyline, Popup, useMap } from 'react-leafl
 import L from 'leaflet'
 import { Button, theme } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined, PauseOutlined } from '@ant-design/icons'
-import type { Trip, TripSpot } from '@/shared/db'
+import type { Trip, TripSpot, TransportType } from '@/shared/db'
+import { getTransportEmoji } from '../utils'
 import { useMapProvider, toDisplayCoord } from '../mapConfig'
 import MapTiles from './MapTiles'
+
+interface MarkerData {
+  lat: number
+  lng: number
+  name: string
+  tripName: string
+  date: string
+  tripId: number
+  transport?: TransportType
+}
 
 interface Props {
   trips: Trip[]
@@ -30,9 +41,14 @@ function BoundsFitter({ coords }: { coords: [number, number][] }) {
   return null
 }
 
-/** Footprint animation: markers appear chronologically */
+/**
+ * Footprint animation with transport emoji + map following.
+ * - Same-trip transitions: emoji moves smoothly along the path (rAF), polyline trail drawn behind
+ * - Different-trip transitions: map flies to the new location
+ * - Map pans to follow the moving emoji in real time
+ */
 function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
-  markers: { lat: number; lng: number; name: string; tripName: string; date: string; tripId: number }[]
+  markers: MarkerData[]
   playing: boolean
   colorPrimary: string
   onDone: () => void
@@ -43,27 +59,38 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
   const ref = useRef({
     layers: [] as L.Layer[],
     idx: 0,
+    step: 0,
+    totalSteps: 0,
+    dLat: 0,
+    dLng: 0,
+    fromPos: null as L.LatLng | null,
+    currentLine: null as L.Polyline | null,
+    currentMover: null as L.Marker | null,
+    rafId: null as number | null,
     timerId: null as ReturnType<typeof setTimeout> | null,
-    prevTripId: null as number | null,
-    prevPos: null as L.LatLng | null,
     started: false,
   })
 
   const cleanup = useCallback(() => {
     const s = ref.current
+    if (s.rafId != null) cancelAnimationFrame(s.rafId)
     if (s.timerId != null) clearTimeout(s.timerId)
+    s.rafId = null
     s.timerId = null
     s.layers.forEach((l) => map.removeLayer(l))
     s.layers = []
     s.idx = 0
-    s.prevTripId = null
-    s.prevPos = null
+    s.step = 0
     s.started = false
+    s.currentLine = null
+    s.currentMover = null
+    s.fromPos = null
   }, [map])
 
   useEffect(() => {
     const s = ref.current
     if (!playing) {
+      if (s.rafId != null) { cancelAnimationFrame(s.rafId); s.rafId = null }
       if (s.timerId != null) { clearTimeout(s.timerId); s.timerId = null }
       return
     }
@@ -71,54 +98,137 @@ function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
     if (!s.started) {
       cleanup()
       s.started = true
-    }
-    showNext()
-
-    function showNext() {
-      const s = ref.current
-      if (s.idx >= markers.length) {
-        onDoneRef.current()
-        return
+      showFirstMarker()
+    } else {
+      // Resume from pause
+      if (s.step > 0 && s.step < s.totalSteps) {
+        tick()
+      } else {
+        processNext()
       }
-      const m = markers[s.idx]!
+    }
+
+    /** Show the very first marker and fly to it */
+    function showFirstMarker() {
+      if (markers.length === 0) { onDoneRef.current(); return }
+      const m = markers[0]!
       const pos = L.latLng(m.lat, m.lng)
 
-      // Connect within same trip
-      if (s.prevPos && m.tripId === s.prevTripId) {
-        const line = L.polyline([s.prevPos, pos], { color: colorPrimary, weight: 2.5, opacity: 0.6, dashArray: '6,4' }).addTo(map)
-        s.layers.push(line)
+      addCircleMarker(m, pos)
+      s.fromPos = pos
+      s.idx = 1
+
+      map.flyTo(pos, Math.max(map.getZoom(), 10), { duration: 0.6 })
+      s.timerId = setTimeout(processNext, 700)
+    }
+
+    /** Process the next marker: animate or fly depending on trip continuity */
+    function processNext() {
+      const s = ref.current
+      if (s.idx >= markers.length) {
+        // Animation complete — zoom out to show all
+        if (markers.length > 1) {
+          const allCoords = markers.map(m => L.latLng(m.lat, m.lng))
+          map.flyToBounds(L.latLngBounds(allCoords).pad(0.15), { duration: 1 })
+        }
+        s.timerId = setTimeout(() => onDoneRef.current(), 1100)
+        return
       }
 
-      // Pulse marker
-      const pulseIcon = L.divIcon({
+      const m = markers[s.idx]!
+      const prev = markers[s.idx - 1]
+      const to = L.latLng(m.lat, m.lng)
+      const sameTripAsPrev = prev != null && m.tripId === prev.tripId
+
+      if (!sameTripAsPrev) {
+        // Different trip — fly to new location, then place marker
+        map.flyTo(to, Math.max(10, Math.min(map.getZoom(), 12)), { duration: 1 })
+        s.timerId = setTimeout(() => {
+          addCircleMarker(m, to)
+          s.fromPos = to
+          s.idx++
+          s.timerId = setTimeout(processNext, 400)
+        }, 1100)
+      } else {
+        // Same trip — animate with transport emoji
+        animateSegment(s.fromPos!, to, m)
+      }
+    }
+
+    /** Smoothly animate a transport emoji from `from` to `to` */
+    function animateSegment(from: L.LatLng, to: L.LatLng, m: MarkerData) {
+      const s = ref.current
+      const dist = from.distanceTo(to)
+      s.totalSteps = Math.max(40, Math.min(150, Math.round(dist / 3000)))
+      s.dLat = (to.lat - from.lat) / s.totalSteps
+      s.dLng = (to.lng - from.lng) / s.totalSteps
+      s.fromPos = from
+      s.step = 0
+
+      const emoji = getTransportEmoji(m.transport)
+      const icon = L.divIcon({
         className: '',
-        html: `<div style="width:12px;height:12px;border-radius:50%;background:${colorPrimary};opacity:0.6;animation:fpPulse 0.5s ease-out"></div>`,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
+        html: `<span style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))">${emoji}</span>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       })
-      const pulse = L.marker(pos, { icon: pulseIcon, zIndexOffset: 900 }).addTo(map)
-      s.layers.push(pulse)
+      s.currentMover = L.marker(from, { icon, zIndexOffset: 1000 }).addTo(map)
+      s.layers.push(s.currentMover)
+      s.currentLine = L.polyline([from], { color: colorPrimary, weight: 3, opacity: 0.8 }).addTo(map)
+      s.layers.push(s.currentLine)
 
-      setTimeout(() => {
-        map.removeLayer(pulse)
-        const pi = s.layers.indexOf(pulse)
-        if (pi >= 0) s.layers.splice(pi, 1)
-        const cm = L.circleMarker(pos, { radius: 6, color: colorPrimary, fillColor: colorPrimary, fillOpacity: 0.7 })
-          .addTo(map).bindPopup(`<b>${m.name}</b><br/>${m.tripName}<br/>${m.date}`)
-        s.layers.push(cm)
-      }, 250)
+      tick()
+    }
 
-      s.prevPos = pos
-      s.prevTripId = m.tripId
-      s.idx++
+    /** RAF tick: move emoji one step, draw trail, pan map */
+    function tick() {
+      const s = ref.current
+      s.step++
+      const lat = s.fromPos!.lat + s.dLat * s.step
+      const lng = s.fromPos!.lng + s.dLng * s.step
+      const pos = L.latLng(lat, lng)
 
-      const nextM: typeof markers[number] | undefined = markers[s.idx]
-      const delay = (nextM && nextM.tripId !== m.tripId) ? 500 : 300
-      s.timerId = setTimeout(showNext, delay)
+      s.currentLine!.addLatLng(pos)
+      s.currentMover!.setLatLng(pos)
+
+      // Map follows the mover
+      map.panTo(pos, { animate: false })
+
+      if (s.step < s.totalSteps) {
+        s.rafId = requestAnimationFrame(tick)
+      } else {
+        // Arrived — remove mover, show circle marker
+        const m = markers[s.idx]!
+        if (s.currentMover) {
+          map.removeLayer(s.currentMover)
+          const mi = s.layers.indexOf(s.currentMover)
+          if (mi >= 0) s.layers.splice(mi, 1)
+          s.currentMover = null
+        }
+
+        const endPos = L.latLng(m.lat, m.lng)
+        addCircleMarker(m, endPos)
+        s.fromPos = endPos
+        s.idx++
+        s.step = 0
+
+        const nextM: MarkerData | undefined = markers[s.idx]
+        const delay = (nextM && nextM.tripId !== m.tripId) ? 600 : 300
+        s.timerId = setTimeout(processNext, delay)
+      }
+    }
+
+    /** Helper: add a permanent circle marker at a position */
+    function addCircleMarker(m: MarkerData, pos: L.LatLng) {
+      const cm = L.circleMarker(pos, {
+        radius: 7, color: colorPrimary, fillColor: colorPrimary, fillOpacity: 0.8,
+      }).addTo(map).bindPopup(`<b>${m.name}</b><br/>${m.tripName}<br/>${m.date}`)
+      ref.current.layers.push(cm)
     }
 
     return () => {
       const s = ref.current
+      if (s.rafId != null) { cancelAnimationFrame(s.rafId); s.rafId = null }
       if (s.timerId != null) { clearTimeout(s.timerId); s.timerId = null }
     }
   }, [playing]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -150,17 +260,25 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
   const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t])), [trips])
 
   const markers = useMemo(() => {
-    const result: { lat: number; lng: number; name: string; tripName: string; date: string; tripId: number }[] = []
+    const result: MarkerData[] = []
     for (const s of spots) {
       if (s.lat != null && s.lng != null) {
         const trip = tripMap.get(s.tripId)
-        result.push({ lat: s.lat, lng: s.lng, name: s.name, tripName: trip?.title ?? '', date: s.date, tripId: s.tripId })
+        result.push({
+          lat: s.lat, lng: s.lng, name: s.name,
+          tripName: trip?.title ?? '', date: s.date,
+          tripId: s.tripId, transport: s.transport,
+        })
       }
     }
     const tripsWithSpotCoords = new Set(spots.filter((s) => s.lat != null && s.lng != null).map((s) => s.tripId))
     for (const t of trips) {
       if (t.lat != null && t.lng != null && !tripsWithSpotCoords.has(t.id)) {
-        result.push({ lat: t.lat, lng: t.lng, name: t.destination, tripName: t.title, date: t.startDate, tripId: t.id! })
+        result.push({
+          lat: t.lat, lng: t.lng, name: t.destination,
+          tripName: t.title, date: t.startDate,
+          tripId: t.id!, transport: undefined,
+        })
       }
     }
     result.sort((a, b) => a.date.localeCompare(b.date))
@@ -214,9 +332,6 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
 
   return (
     <div style={{ position: 'relative', height, overflow: 'hidden' }}>
-      {/* Inject pulse animation CSS */}
-      <style>{`@keyframes fpPulse{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.5);opacity:0}}`}</style>
-
       <MapContainer
         key={provider}
         center={center}
