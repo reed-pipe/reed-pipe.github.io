@@ -1,7 +1,7 @@
 import { Timeline, Typography, Space, Image, Tag, theme } from 'antd'
 import { EnvironmentOutlined, DollarOutlined, CameraOutlined } from '@ant-design/icons'
 import type { TripSpot } from '@/shared/db'
-import { groupSpotsByDate, formatCost } from '../utils'
+import { groupSpotsByDate, formatCost, getTransportEmoji, getTransportLabel } from '../utils'
 
 const { Text, Paragraph } = Typography
 
@@ -48,9 +48,14 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)' }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
             >
-              <Space size={8}>
+              <Space size={8} wrap>
                 <EnvironmentOutlined style={{ color: colorPrimary }} />
                 <Text strong>{spot.name}</Text>
+                {spot.transport && (
+                  <Tag style={{ margin: 0, fontSize: 11 }}>
+                    {getTransportEmoji(spot.transport)} {getTransportLabel(spot.transport)}
+                  </Tag>
+                )}
                 {spot.cost != null && spot.cost > 0 && (
                   <Tag icon={<DollarOutlined />} color="gold" style={{ margin: 0 }}>
                     {formatCost(spot.cost)}

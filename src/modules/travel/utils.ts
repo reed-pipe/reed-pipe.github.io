@@ -1,4 +1,24 @@
-import type { Trip, TripSpot } from '@/shared/db'
+import type { Trip, TripSpot, TransportType } from '@/shared/db'
+
+/** 交通工具配置 */
+export const TRANSPORT_OPTIONS: { value: TransportType; label: string; emoji: string }[] = [
+  { value: 'plane', label: '飞机', emoji: '✈️' },
+  { value: 'train', label: '高铁/火车', emoji: '🚄' },
+  { value: 'car', label: '自驾', emoji: '🚗' },
+  { value: 'bus', label: '大巴', emoji: '🚌' },
+  { value: 'ship', label: '轮船', emoji: '🚢' },
+  { value: 'bike', label: '骑行', emoji: '🚲' },
+  { value: 'walk', label: '步行', emoji: '🚶' },
+  { value: 'other', label: '其他', emoji: '📍' },
+]
+
+export function getTransportEmoji(type?: TransportType): string {
+  return TRANSPORT_OPTIONS.find((t) => t.value === type)?.emoji ?? '📍'
+}
+
+export function getTransportLabel(type?: TransportType): string {
+  return TRANSPORT_OPTIONS.find((t) => t.value === type)?.label ?? '其他'
+}
 
 /** 计算旅行天数 */
 export function tripDays(start: string, end: string): number {

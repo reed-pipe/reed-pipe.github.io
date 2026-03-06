@@ -30,12 +30,17 @@ export interface BodyMeasurement {
   createdAt: number // timestamp
 }
 
+export type TransportType = 'plane' | 'train' | 'car' | 'bus' | 'ship' | 'bike' | 'walk' | 'other'
+
 export interface Trip {
   id: number
   title: string
   destination: string
   lat?: number
   lng?: number
+  departureName?: string
+  departureLat?: number
+  departureLng?: number
   startDate: string // "YYYY-MM-DD"
   endDate: string // "YYYY-MM-DD"
   coverPhoto?: string // base64 data URL
@@ -57,6 +62,7 @@ export interface TripSpot {
   photos: string[] // base64 data URLs
   note?: string
   cost?: number
+  transport?: TransportType
   sortOrder: number
   createdAt: number
 }

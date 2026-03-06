@@ -82,6 +82,11 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       <div>
         <Title level={4} style={{ marginBottom: 4 }}>{trip.title}</Title>
         <Space wrap size={12}>
+          {trip.departureName && (
+            <Text type="secondary">
+              🏠 {trip.departureName} →
+            </Text>
+          )}
           <Text type="secondary">
             <EnvironmentOutlined /> {trip.destination}
           </Text>
@@ -133,7 +138,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           {
             key: 'map',
             label: '地图',
-            children: <TripMap spots={spots} />,
+            children: <TripMap trip={trip} spots={spots} />,
           },
           {
             key: 'photos',

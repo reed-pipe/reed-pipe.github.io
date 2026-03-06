@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Modal, Form, Input, DatePicker, InputNumber, Upload, message } from 'antd'
+import { Modal, Form, Input, DatePicker, InputNumber, Upload, Select, message } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import type { UploadFile } from 'antd'
 import dayjs from 'dayjs'
 import type { TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { compressImage } from '../utils'
+import { compressImage, TRANSPORT_OPTIONS } from '../utils'
 import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
@@ -37,6 +37,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
           date: dayjs(spot.date),
           cost: spot.cost,
           note: spot.note,
+          transport: spot.transport,
         })
         setPhotos(spot.photos ?? [])
         setLocation(
@@ -80,6 +81,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         photos,
         cost: values.cost,
         note: values.note,
+        transport: values.transport,
       }
 
       if (spot) {
@@ -125,6 +127,13 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
           <DatePicker
             style={{ width: '100%' }}
             disabledDate={(d) => d.isBefore(tripStartDate, 'day') || d.isAfter(tripEndDate, 'day')}
+          />
+        </Form.Item>
+        <Form.Item name="transport" label="交通方式">
+          <Select
+            placeholder="到达此地的交通方式"
+            allowClear
+            options={TRANSPORT_OPTIONS.map((t) => ({ value: t.value, label: `${t.emoji} ${t.label}` }))}
           />
         </Form.Item>
         <Form.Item label="位置">

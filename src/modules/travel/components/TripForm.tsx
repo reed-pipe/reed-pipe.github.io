@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Modal, Form, Input, DatePicker, InputNumber, Rate, Select, Upload, message } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import type { UploadFile } from 'antd'
@@ -28,7 +28,18 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [coverPhoto, setCoverPhoto] = useState<string | undefined>(undefined)
   const [destination, setDestination] = useState<LocationValue | null>(null)
+  const [departure, setDeparture] = useState<LocationValue | null>(null)
   const db = useDb()
+
+  // 加载默认出发地
+  useEffect(() => {
+    db.kv.get('default_departure').then((item) => {
+      if (item?.value) {
+        const val = item.value as { name: string; lat: number; lng: number }
+        setDeparture({ lat: val.lat, lng: val.lng, address: val.name })
+      }
+    })
+  }, [db])
 
   const handleOpen = (isOpen: boolean) => {
     if (isOpen) {
@@ -47,10 +58,22 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
             ? { lat: trip.lat, lng: trip.lng, address: trip.destination }
             : null,
         )
+        setDeparture(
+          trip.departureLat != null && trip.departureLng != null
+            ? { lat: trip.departureLat, lng: trip.departureLng, address: trip.departureName ?? '' }
+            : null,
+        )
       } else {
         form.resetFields()
         setCoverPhoto(undefined)
         setDestination(null)
+        // 新建时加载默认出发地
+        db.kv.get('default_departure').then((item) => {
+          if (item?.value) {
+            const val = item.value as { name: string; lat: number; lng: number }
+            setDeparture({ lat: val.lat, lng: val.lng, address: val.name })
+          }
+        })
       }
     }
   }
@@ -73,14 +96,17 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
     }
     setSubmitting(true)
     try {
-      // 从地址中提取简短目的地名称（取第一段）
       const destName = destination.address.split(',')[0]?.trim() || destination.address
+      const depName = departure?.address.split(',')[0]?.trim() || departure?.address
 
       const data = {
         title: values.title,
         destination: destName,
         lat: destination.lat,
         lng: destination.lng,
+        departureName: depName,
+        departureLat: departure?.lat,
+        departureLng: departure?.lng,
         startDate: values.dateRange[0].format('YYYY-MM-DD'),
         endDate: values.dateRange[1].format('YYYY-MM-DD'),
         tags: values.tags ?? [],
@@ -94,6 +120,14 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
         await db.trips.update(trip.id, data)
       } else {
         await db.trips.add({ ...data, createdAt: Date.now() } as never)
+      }
+
+      // 保存出发地为默认值
+      if (departure) {
+        await db.kv.put({
+          key: 'default_departure',
+          value: { name: departure.address, lat: departure.lat, lng: departure.lng },
+        })
       }
 
       onSaved()
@@ -121,6 +155,14 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入旅行标题' }]}>
           <Input placeholder="例：日本关西之旅" maxLength={50} />
+        </Form.Item>
+        <Form.Item label="出发地">
+          <LocationPicker
+            value={departure}
+            onChange={setDeparture}
+            compact
+            placeholder="搜索出发地（默认记住上次）"
+          />
         </Form.Item>
         <Form.Item label="目的地" required>
           <LocationPicker
