@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import type { Trip } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
 import { compressImage } from '../utils'
+import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
 const { RangePicker } = DatePicker
@@ -26,6 +27,7 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const [coverPhoto, setCoverPhoto] = useState<string | undefined>(undefined)
+  const [destination, setDestination] = useState<LocationValue | null>(null)
   const db = useDb()
 
   const handleOpen = (isOpen: boolean) => {
@@ -33,7 +35,6 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
       if (trip) {
         form.setFieldsValue({
           title: trip.title,
-          destination: trip.destination,
           dateRange: [dayjs(trip.startDate), dayjs(trip.endDate)],
           tags: trip.tags,
           rating: trip.rating,
@@ -41,9 +42,15 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
           summary: trip.summary,
         })
         setCoverPhoto(trip.coverPhoto)
+        setDestination(
+          trip.lat != null && trip.lng != null
+            ? { lat: trip.lat, lng: trip.lng, address: trip.destination }
+            : null,
+        )
       } else {
         form.resetFields()
         setCoverPhoto(undefined)
+        setDestination(null)
       }
     }
   }
@@ -55,16 +62,25 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
     } catch {
       message.error('图片处理失败')
     }
-    return false // prevent default upload
+    return false
   }
 
   const handleSubmit = async () => {
     const values = await form.validateFields()
+    if (!destination) {
+      message.warning('请搜索并选择目的地')
+      return
+    }
     setSubmitting(true)
     try {
+      // 从地址中提取简短目的地名称（取第一段）
+      const destName = destination.address.split(',')[0]?.trim() || destination.address
+
       const data = {
         title: values.title,
-        destination: values.destination,
+        destination: destName,
+        lat: destination.lat,
+        lng: destination.lng,
         startDate: values.dateRange[0].format('YYYY-MM-DD'),
         endDate: values.dateRange[1].format('YYYY-MM-DD'),
         tags: values.tags ?? [],
@@ -106,8 +122,13 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
         <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入旅行标题' }]}>
           <Input placeholder="例：日本关西之旅" maxLength={50} />
         </Form.Item>
-        <Form.Item name="destination" label="目的地" rules={[{ required: true, message: '请输入目的地' }]}>
-          <Input placeholder="例：日本大阪" maxLength={30} />
+        <Form.Item label="目的地" required>
+          <LocationPicker
+            value={destination}
+            onChange={setDestination}
+            compact
+            placeholder="搜索目的地（如：大阪、巴黎、西湖）"
+          />
         </Form.Item>
         <Form.Item name="dateRange" label="日期" rules={[{ required: true, message: '请选择日期范围' }]}>
           <RangePicker style={{ width: '100%' }} />

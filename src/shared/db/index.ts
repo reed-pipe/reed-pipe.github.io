@@ -34,6 +34,8 @@ export interface Trip {
   id: number
   title: string
   destination: string
+  lat?: number
+  lng?: number
   startDate: string // "YYYY-MM-DD"
   endDate: string // "YYYY-MM-DD"
   coverPhoto?: string // base64 data URL

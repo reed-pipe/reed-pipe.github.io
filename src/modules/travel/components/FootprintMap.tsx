@@ -15,25 +15,45 @@ export default function FootprintMap({ trips, spots, height = 480 }: Props) {
 
   const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t])), [trips])
 
-  const geoSpots = useMemo(
-    () => spots.filter((s) => s.lat != null && s.lng != null),
-    [spots],
-  )
+  // 合并两种坐标来源：打卡点坐标 + 旅行目的地坐标（无打卡点时 fallback）
+  const markers = useMemo(() => {
+    const result: { lat: number; lng: number; name: string; tripName: string; date: string }[] = []
 
-  if (geoSpots.length === 0) {
+    // 打卡点坐标
+    for (const s of spots) {
+      if (s.lat != null && s.lng != null) {
+        const trip = tripMap.get(s.tripId)
+        result.push({ lat: s.lat, lng: s.lng, name: s.name, tripName: trip?.title ?? '', date: s.date })
+      }
+    }
+
+    // 旅行目的地坐标（只添加没有任何打卡点坐标的旅行）
+    const tripsWithSpotCoords = new Set(
+      spots.filter((s) => s.lat != null && s.lng != null).map((s) => s.tripId),
+    )
+    for (const t of trips) {
+      if (t.lat != null && t.lng != null && !tripsWithSpotCoords.has(t.id)) {
+        result.push({ lat: t.lat, lng: t.lng, name: t.destination, tripName: t.title, date: t.startDate })
+      }
+    }
+
+    return result
+  }, [trips, spots, tripMap])
+
+  if (markers.length === 0) {
     return <Empty description="暂无足迹坐标数据" style={{ padding: 40 }} />
   }
 
-  const lats = geoSpots.map((s) => s.lat!)
-  const lngs = geoSpots.map((s) => s.lng!)
+  const lats = markers.map((m) => m.lat)
+  const lngs = markers.map((m) => m.lng)
   const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2
   const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2
 
-  const markersJs = geoSpots
-    .map((s) => {
-      const trip = tripMap.get(s.tripId)
-      const tripName = (trip?.title ?? '').replace(/`/g, "'").replace(/\\/g, '')
-      return `L.circleMarker([${s.lat},${s.lng}],{radius:6,color:'${colorPrimary}',fillColor:'${colorPrimary}',fillOpacity:0.7}).addTo(map).bindPopup(\`<b>${s.name.replace(/`/g, "'")}</b><br/>${tripName}<br/>${s.date}\`);`
+  const markersJs = markers
+    .map((m) => {
+      const name = m.name.replace(/`/g, "'").replace(/\\/g, '')
+      const tripName = m.tripName.replace(/`/g, "'").replace(/\\/g, '')
+      return `L.circleMarker([${m.lat},${m.lng}],{radius:6,color:'${colorPrimary}',fillColor:'${colorPrimary}',fillOpacity:0.7}).addTo(map).bindPopup(\`<b>${name}</b><br/>${tripName}<br/>${m.date}\`);`
     })
     .join('\n')
 

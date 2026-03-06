@@ -13,6 +13,9 @@ export interface LocationValue {
 interface Props {
   value?: LocationValue | null
   onChange?: (value: LocationValue | null) => void
+  /** 紧凑模式：不显示小地图和坐标详情，适合目的地选择 */
+  compact?: boolean
+  placeholder?: string
 }
 
 interface NominatimResult {
@@ -36,7 +39,7 @@ async function searchLocation(query: string): Promise<NominatimResult[]> {
   return res.json()
 }
 
-export default function LocationPicker({ value, onChange }: Props) {
+export default function LocationPicker({ value, onChange, compact, placeholder }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NominatimResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -144,7 +147,7 @@ map.on('click',function(e){
     <div ref={wrapperRef} style={{ position: 'relative' }}>
       {/* 搜索框 */}
       <Input
-        placeholder="搜索地点名称（如：西湖、东京塔）"
+        placeholder={placeholder ?? '搜索地点名称（如：西湖、东京塔）'}
         prefix={<SearchOutlined style={{ color: colorTextSecondary }} />}
         suffix={searching ? <Spin size="small" /> : null}
         value={query}
@@ -200,7 +203,15 @@ map.on('click',function(e){
       )}
 
       {/* 已选位置信息 */}
-      {value && (
+      {value && compact && (
+        <div style={{ marginTop: 4 }}>
+          <Text type="secondary" style={{ fontSize: 11 }} ellipsis>
+            <AimOutlined style={{ marginRight: 4 }} />
+            {value.address || `${value.lat.toFixed(4)}, ${value.lng.toFixed(4)}`}
+          </Text>
+        </div>
+      )}
+      {value && !compact && (
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
             <AimOutlined style={{ color: colorPrimary, fontSize: 12 }} />
