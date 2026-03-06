@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Button, Space, Tabs, Typography, Tag, Rate, Modal, message, theme } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -33,7 +33,6 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   const [spotFormOpen, setSpotFormOpen] = useState(false)
   const [editingSpot, setEditingSpot] = useState<TripSpot | null>(null)
   const [quickData, setQuickData] = useState<SpotInitialData | null>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
   const db = useDb()
   const { token: { colorTextSecondary } } = theme.useToken()
 
@@ -88,42 +87,43 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
     })
   }, [])
 
-  /** Quick check-in: camera + GPS */
-  const handleQuickCheckin = () => {
-    cameraInputRef.current?.click()
-  }
+  /** Quick check-in: dynamically create input to ensure mobile compatibility */
+  const handleQuickCheckin = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.capture = 'environment'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
 
-  const handleCameraCapture = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    // Reset input so same file can be selected again
-    e.target.value = ''
+      message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
 
-    message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
+      const [compressed, location] = await Promise.all([
+        compressImage(file, 800, 0.7),
+        getGeoLocation(),
+      ])
 
-    const [compressed, location] = await Promise.all([
-      compressImage(file, 800, 0.7),
-      getGeoLocation(),
-    ])
+      message.destroy('quickCheckin')
+      if (location) {
+        message.success('已获取当前位置')
+      } else {
+        message.warning('无法获取位置，请手动搜索')
+      }
 
-    message.destroy('quickCheckin')
-    if (location) {
-      message.success('已获取当前位置')
-    } else {
-      message.warning('无法获取位置，请手动搜索')
+      // Clamp today to trip date range
+      const today = new Date().toISOString().slice(0, 10)
+      const date = today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
+
+      setQuickData({
+        photos: [compressed],
+        location: location ?? undefined,
+        date,
+      })
+      setEditingSpot(null)
+      setSpotFormOpen(true)
     }
-
-    // Clamp today to trip date range
-    const today = new Date().toISOString().slice(0, 10)
-    const date = today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
-
-    setQuickData({
-      photos: [compressed],
-      location: location ?? undefined,
-      date,
-    })
-    setEditingSpot(null)
-    setSpotFormOpen(true)
+    input.click()
   }, [getGeoLocation, trip.startDate, trip.endDate])
 
   return (
@@ -194,16 +194,6 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           </Button>
         </Space>
       </div>
-      {/* Hidden camera input for quick check-in */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: 'none' }}
-        onChange={handleCameraCapture}
-      />
-
       <Tabs
         defaultActiveKey="timeline"
         items={[
