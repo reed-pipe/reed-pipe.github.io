@@ -1,210 +1,270 @@
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react'
+import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import L from 'leaflet'
 import { Button, Empty, theme } from 'antd'
-import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { PlayCircleOutlined, ReloadOutlined, PauseOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
-import { useMapProvider, getTileLayerJs, toDisplayCoord } from '../mapConfig'
+import { useMapProvider, toDisplayCoord } from '../mapConfig'
+import MapTiles from './MapTiles'
 
 interface Props {
   trips: Trip[]
   spots: TripSpot[]
   height?: number | string
+  onBack?: () => void
+  spotCount?: number
 }
 
-export default function FootprintMap({ trips, spots, height = 480 }: Props) {
+/** Fit bounds when data/provider changes */
+function BoundsFitter({ coords }: { coords: [number, number][] }) {
+  const map = useMap()
+  useEffect(() => {
+    if (coords.length > 1) {
+      map.fitBounds(L.latLngBounds(coords).pad(0.15))
+    } else if (coords.length === 1) {
+      map.setView(coords[0]!, 12)
+    }
+    setTimeout(() => map.invalidateSize(), 100)
+  }, [map, coords])
+  return null
+}
+
+/** Footprint animation: markers appear chronologically */
+function FootprintAnimator({ markers, playing, colorPrimary, onDone }: {
+  markers: { lat: number; lng: number; name: string; tripName: string; date: string; tripId: number }[]
+  playing: boolean
+  colorPrimary: string
+  onDone: () => void
+}) {
+  const map = useMap()
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
+  const ref = useRef({
+    layers: [] as L.Layer[],
+    idx: 0,
+    timerId: null as ReturnType<typeof setTimeout> | null,
+    prevTripId: null as number | null,
+    prevPos: null as L.LatLng | null,
+    started: false,
+  })
+
+  const cleanup = useCallback(() => {
+    const s = ref.current
+    if (s.timerId != null) clearTimeout(s.timerId)
+    s.timerId = null
+    s.layers.forEach((l) => map.removeLayer(l))
+    s.layers = []
+    s.idx = 0
+    s.prevTripId = null
+    s.prevPos = null
+    s.started = false
+  }, [map])
+
+  useEffect(() => {
+    const s = ref.current
+    if (!playing) {
+      if (s.timerId != null) { clearTimeout(s.timerId); s.timerId = null }
+      return
+    }
+
+    if (!s.started) {
+      cleanup()
+      s.started = true
+    }
+    showNext()
+
+    function showNext() {
+      const s = ref.current
+      if (s.idx >= markers.length) {
+        onDoneRef.current()
+        return
+      }
+      const m = markers[s.idx]!
+      const pos = L.latLng(m.lat, m.lng)
+
+      // Connect within same trip
+      if (s.prevPos && m.tripId === s.prevTripId) {
+        const line = L.polyline([s.prevPos, pos], { color: colorPrimary, weight: 2.5, opacity: 0.6, dashArray: '6,4' }).addTo(map)
+        s.layers.push(line)
+      }
+
+      // Pulse marker
+      const pulseIcon = L.divIcon({
+        className: '',
+        html: `<div style="width:12px;height:12px;border-radius:50%;background:${colorPrimary};opacity:0.6;animation:fpPulse 0.5s ease-out"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      })
+      const pulse = L.marker(pos, { icon: pulseIcon, zIndexOffset: 900 }).addTo(map)
+      s.layers.push(pulse)
+
+      setTimeout(() => {
+        map.removeLayer(pulse)
+        const pi = s.layers.indexOf(pulse)
+        if (pi >= 0) s.layers.splice(pi, 1)
+        const cm = L.circleMarker(pos, { radius: 6, color: colorPrimary, fillColor: colorPrimary, fillOpacity: 0.7 })
+          .addTo(map).bindPopup(`<b>${m.name}</b><br/>${m.tripName}<br/>${m.date}`)
+        s.layers.push(cm)
+      }, 250)
+
+      s.prevPos = pos
+      s.prevTripId = m.tripId
+      s.idx++
+
+      const nextM: typeof markers[number] | undefined = markers[s.idx]
+      const delay = (nextM && nextM.tripId !== m.tripId) ? 500 : 300
+      s.timerId = setTimeout(showNext, delay)
+    }
+
+    return () => {
+      const s = ref.current
+      if (s.timerId != null) { clearTimeout(s.timerId); s.timerId = null }
+    }
+  }, [playing]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => cleanup, [cleanup])
+  return null
+}
+
+const glassStyle: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.88)',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
+  borderRadius: 14,
+  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+  border: '1px solid rgba(0,0,0,0.06)',
+  padding: '6px 14px',
+}
+
+export default function FootprintMap({ trips, spots, height = 480, onBack, spotCount }: Props) {
   const { token: { colorPrimary } } = theme.useToken()
   const [provider] = useMapProvider()
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [animating, setAnimating] = useState(false)
-  const [hasPlayed, setHasPlayed] = useState(false)
+  const [animState, setAnimState] = useState<'idle' | 'playing' | 'paused' | 'done'>('idle')
 
   const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t])), [trips])
 
-  // 合并坐标来源，并按日期排序，附带 tripId 用于分组连线
   const markers = useMemo(() => {
     const result: { lat: number; lng: number; name: string; tripName: string; date: string; tripId: number }[] = []
-
     for (const s of spots) {
       if (s.lat != null && s.lng != null) {
         const trip = tripMap.get(s.tripId)
         result.push({ lat: s.lat, lng: s.lng, name: s.name, tripName: trip?.title ?? '', date: s.date, tripId: s.tripId })
       }
     }
-
-    const tripsWithSpotCoords = new Set(
-      spots.filter((s) => s.lat != null && s.lng != null).map((s) => s.tripId),
-    )
+    const tripsWithSpotCoords = new Set(spots.filter((s) => s.lat != null && s.lng != null).map((s) => s.tripId))
     for (const t of trips) {
       if (t.lat != null && t.lng != null && !tripsWithSpotCoords.has(t.id)) {
         result.push({ lat: t.lat, lng: t.lng, name: t.destination, tripName: t.title, date: t.startDate, tripId: t.id! })
       }
     }
-
     result.sort((a, b) => a.date.localeCompare(b.date))
     return result
   }, [trips, spots, tripMap])
 
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'footprint-animation-done') {
-        setAnimating(false)
-        setHasPlayed(true)
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [])
+  const displayMarkers = useMemo(
+    () => markers.map((m) => {
+      const [lat, lng] = toDisplayCoord(m.lat, m.lng, provider)
+      return { ...m, lat, lng }
+    }),
+    [markers, provider],
+  )
 
-  const playAnimation = useCallback(() => {
-    iframeRef.current?.contentWindow?.postMessage({ type: 'play-footprint-animation' }, '*')
-    setAnimating(true)
-  }, [])
+  const displayCoords = useMemo<[number, number][]>(
+    () => displayMarkers.map((m) => [m.lat, m.lng]),
+    [displayMarkers],
+  )
 
   if (markers.length === 0) {
     return <Empty description="暂无足迹坐标数据" style={{ padding: 40 }} />
   }
 
-  const displayCoords = markers.map((m) => toDisplayCoord(m.lat, m.lng, provider))
-  const dLats = displayCoords.map((c) => c[0])
-  const dLngs = displayCoords.map((c) => c[1])
+  const center: [number, number] = displayCoords.length > 0
+    ? [displayCoords.reduce((s, c) => s + c[0], 0) / displayCoords.length,
+       displayCoords.reduce((s, c) => s + c[1], 0) / displayCoords.length]
+    : [35, 105]
 
-  // 构建标记数据（传入 iframe）
-  const markersData = markers.map((m, i) => {
-    const [dLat, dLng] = displayCoords[i]!
-    return { lat: dLat, lng: dLng, name: m.name, tripName: m.tripName, date: m.date, tripId: m.tripId }
-  })
-  const markersJson = JSON.stringify(markersData)
-
-  const html = `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>
-<style>
-html,body,#map{margin:0;height:100%;width:100%}
-@keyframes pulse{0%{transform:scale(0);opacity:1}70%{transform:scale(2.5);opacity:0}100%{transform:scale(3);opacity:0}}
-.pulse-ring{position:absolute;width:12px;height:12px;border-radius:50%;background:${colorPrimary};opacity:0.5;animation:pulse 0.6s ease-out;}
-</style>
-</head><body>
-<div id="map"></div>
-<script>
-var map=L.map('map',{zoomControl:true});
-${getTileLayerJs(provider)}.addTo(map);
-
-var allMarkers=${markersJson};
-var bounds=L.latLngBounds([[${Math.min(...dLats)},${Math.min(...dLngs)}],[${Math.max(...dLats)},${Math.max(...dLngs)}]]);
-map.fitBounds(bounds.pad(0.15));
-
-var staticLayers=[];
-var animLayers=[];
-
-function showStatic(){
-  clearAnim();
-  for(var i=0;i<staticLayers.length;i++) map.removeLayer(staticLayers[i]);
-  staticLayers=[];
-  for(var i=0;i<allMarkers.length;i++){
-    var m=allMarkers[i];
-    var cm=L.circleMarker([m.lat,m.lng],{radius:6,color:'${colorPrimary}',fillColor:'${colorPrimary}',fillOpacity:0.7})
-      .addTo(map).bindPopup('<b>'+m.name+'</b><br/>'+m.tripName+'<br/>'+m.date);
-    staticLayers.push(cm);
-  }
-}
-
-function clearAnim(){
-  for(var i=0;i<animLayers.length;i++) map.removeLayer(animLayers[i]);
-  animLayers=[];
-}
-
-function playAnimation(){
-  // 移除静态标记
-  for(var i=0;i<staticLayers.length;i++) map.removeLayer(staticLayers[i]);
-  staticLayers=[];
-  clearAnim();
-
-  var idx=0;
-  var prevPos=null;
-  var prevTripId=null;
-
-  function showNext(){
-    if(idx>=allMarkers.length){
-      window.parent.postMessage({type:'footprint-animation-done'},'*');
-      return;
-    }
-    var m=allMarkers[idx];
-    var pos=L.latLng(m.lat,m.lng);
-
-    // 同一旅行内画连线动画
-    if(prevPos && m.tripId===prevTripId){
-      var line=L.polyline([prevPos,pos],{color:'${colorPrimary}',weight:2.5,opacity:0.6,dashArray:'6,4'}).addTo(map);
-      animLayers.push(line);
-    }
-
-    // 脉冲效果标记
-    var pulseIcon=L.divIcon({className:'',html:'<div class="pulse-ring"></div>',iconSize:[12,12],iconAnchor:[6,6]});
-    var pulseMarker=L.marker(pos,{icon:pulseIcon,zIndexOffset:900}).addTo(map);
-    animLayers.push(pulseMarker);
-
-    // 正式标记（延迟出现）
-    setTimeout(function(){
-      map.removeLayer(pulseMarker);
-      var ii=animLayers.indexOf(pulseMarker);
-      if(ii>=0) animLayers.splice(ii,1);
-
-      var cm=L.circleMarker(pos,{radius:6,color:'${colorPrimary}',fillColor:'${colorPrimary}',fillOpacity:0.7})
-        .addTo(map).bindPopup('<b>'+m.name+'</b><br/>'+m.tripName+'<br/>'+m.date);
-      animLayers.push(cm);
-    },300);
-
-    prevPos=pos;
-    prevTripId=m.tripId;
-    idx++;
-
-    // 间隔时间：同一旅行内快一些，不同旅行间慢一些
-    var nextM=allMarkers[idx];
-    var delay=(nextM && nextM.tripId!==m.tripId)?600:350;
-    setTimeout(showNext,delay);
+  const handleButtonClick = () => {
+    if (animState === 'idle' || animState === 'done') setAnimState('playing')
+    else if (animState === 'playing') setAnimState('paused')
+    else if (animState === 'paused') setAnimState('playing')
   }
 
-  showNext();
-}
-
-// 初始显示静态标记
-showStatic();
-
-window.addEventListener('message',function(e){
-  if(e.data&&e.data.type==='play-footprint-animation'){
-    playAnimation();
-  }
-});
-
-map.whenReady(function(){
-  setTimeout(function(){ map.invalidateSize(); map.fitBounds(bounds.pad(0.15)); },200);
-  window.parent.postMessage({type:'footprint-map-ready'},'*');
-});
-<\\/script>
-</body></html>`
+  const showStaticMarkers = animState === 'idle'
 
   return (
-    <div style={{ position: 'relative' }}>
-      <iframe
-        ref={iframeRef}
-        srcDoc={html}
-        style={{ width: '100%', height, border: 'none', borderRadius: 8 }}
-        sandbox="allow-scripts"
-        title="footprint-map"
-      />
-      {markers.length > 1 && (
-        <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}>
+    <div style={{ position: 'relative', height, borderRadius: 12, overflow: 'hidden' }}>
+      {/* Inject pulse animation CSS */}
+      <style>{`@keyframes fpPulse{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.5);opacity:0}}`}</style>
+
+      <MapContainer
+        key={provider}
+        center={center}
+        zoom={4}
+        style={{ height: '100%', width: '100%' }}
+        zoomControl={true}
+      >
+        <MapTiles provider={provider} />
+        <BoundsFitter coords={displayCoords} />
+
+        {/* Static markers (shown when idle) */}
+        {showStaticMarkers && displayMarkers.map((m, i) => (
+          <CircleMarker
+            key={i}
+            center={[m.lat, m.lng]}
+            radius={6}
+            pathOptions={{ color: colorPrimary, fillColor: colorPrimary, fillOpacity: 0.7 }}
+          >
+            <Popup>
+              <b>{m.name}</b><br />{m.tripName}<br />{m.date}
+            </Popup>
+          </CircleMarker>
+        ))}
+
+        {/* Animation layer */}
+        {(animState === 'playing' || animState === 'paused') && (
+          <FootprintAnimator
+            markers={displayMarkers}
+            playing={animState === 'playing'}
+            colorPrimary={colorPrimary}
+            onDone={() => setAnimState('done')}
+          />
+        )}
+      </MapContainer>
+
+      {/* Floating controls */}
+      {onBack && (
+        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 1000 }}>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={onBack}
+            style={{ ...glassStyle, cursor: 'pointer', fontWeight: 500 }}
+          >
+            返回
+          </Button>
+        </div>
+      )}
+
+      {displayMarkers.length > 1 && (
+        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1000 }}>
           <Button
             type="primary"
-            icon={hasPlayed ? <ReloadOutlined /> : <PlayCircleOutlined />}
-            onClick={playAnimation}
-            loading={animating}
+            icon={
+              animState === 'playing' ? <PauseOutlined /> :
+              animState === 'done' ? <ReloadOutlined /> :
+              <PlayCircleOutlined />
+            }
+            onClick={handleButtonClick}
             size="small"
-            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}
+            style={{ ...glassStyle, background: colorPrimary, color: '#fff', border: 'none' }}
           >
-            {animating ? '播放中' : hasPlayed ? '重播足迹' : '播放足迹'}
+            {animState === 'playing' ? '暂停' : animState === 'paused' ? '继续' : animState === 'done' ? '重播' : '播放足迹'}
           </Button>
+        </div>
+      )}
+
+      {spotCount != null && (
+        <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 1000, ...glassStyle, fontSize: 12, color: '#666' }}>
+          共 {spotCount} 个坐标点
         </div>
       )}
     </div>

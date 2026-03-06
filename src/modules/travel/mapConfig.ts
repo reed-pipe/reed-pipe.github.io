@@ -14,7 +14,6 @@ function notifyChange() {
   listeners.forEach((fn) => fn())
 }
 
-/** Auto-detect: timezone / language heuristic */
 function detectProvider(): MapProvider {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -56,15 +55,6 @@ export function useMapProviderPreference(): 'auto' | 'osm' | 'amap' {
   return useSyncExternalStore(subscribe, () => getMapProviderPreference())
 }
 
-// --------------- Tile Layer ---------------
-
-export function getTileLayerJs(provider: MapProvider): string {
-  if (provider === 'amap') {
-    return `L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{maxZoom:18,subdomains:'1234',attribution:'\\u00a9 \\u9ad8\\u5fb7\\u5730\\u56fe'})`
-  }
-  return `L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'OSM'})`
-}
-
 // --------------- GCJ-02 Coordinate Conversion ---------------
 
 const PI = Math.PI
@@ -91,7 +81,6 @@ function transformLng(x: number, y: number): number {
   return r
 }
 
-/** WGS-84 -> GCJ-02 */
 export function wgs84ToGcj02(lat: number, lng: number): [number, number] {
   if (outOfChina(lat, lng)) return [lat, lng]
   let dLat = transformLat(lng - 105.0, lat - 35.0)
@@ -105,7 +94,6 @@ export function wgs84ToGcj02(lat: number, lng: number): [number, number] {
   return [lat + dLat, lng + dLng]
 }
 
-/** GCJ-02 -> WGS-84 (iterative) */
 export function gcj02ToWgs84(gcjLat: number, gcjLng: number): [number, number] {
   if (outOfChina(gcjLat, gcjLng)) return [gcjLat, gcjLng]
   let wLat = gcjLat, wLng = gcjLng
@@ -117,13 +105,11 @@ export function gcj02ToWgs84(gcjLat: number, gcjLng: number): [number, number] {
   return [wLat, wLng]
 }
 
-/** Convert WGS-84 coordinate to display coordinate based on provider */
 export function toDisplayCoord(lat: number, lng: number, provider: MapProvider): [number, number] {
   if (provider === 'amap') return wgs84ToGcj02(lat, lng)
   return [lat, lng]
 }
 
-/** Convert display coordinate (from map click) back to WGS-84 for storage */
 export function fromDisplayCoord(lat: number, lng: number, provider: MapProvider): [number, number] {
   if (provider === 'amap') return gcj02ToWgs84(lat, lng)
   return [lat, lng]

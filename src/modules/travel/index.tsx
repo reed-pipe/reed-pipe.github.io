@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Button, Space, Select, Segmented, Typography, Grid, Empty, Modal, message } from 'antd'
 import { PlusOutlined, GlobalOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
+import 'leaflet/dist/leaflet.css'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { Trip } from '@/shared/db'
@@ -35,7 +36,6 @@ export default function Travel() {
   const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
   const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
 
-  // 筛选
   const filteredTrips = useMemo(() => {
     let result = trips
     if (tagFilter) {
@@ -47,7 +47,6 @@ export default function Travel() {
     return result
   }, [trips, tagFilter, yearFilter])
 
-  // 提取所有标签和年份
   const allTags = useMemo(() => [...new Set(trips.flatMap((t) => t.tags))].sort(), [trips])
   const allYears = useMemo(() => {
     const years = [...new Set(trips.map((t) => t.startDate.slice(0, 4)))]
@@ -73,25 +72,25 @@ export default function Travel() {
     message.success('导出成功')
   }
 
+  const spotCount = allSpots.filter((s) => s.lat && s.lng).length
+
   const renderContent = () => {
-    // 足迹地图视图
+    // 足迹地图视图 — 全屏沉浸式
     if (showFootprint) {
-      // 动态计算地图高度填满视口：减去 header(64) + content margin/padding + 操作栏 + 底部文字
-      const mapHeight = isMobile ? 'calc(100vh - 190px)' : 'calc(100vh - 250px)'
       return (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Button type="text" onClick={() => setShowFootprint(false)}>
-              ← 返回
-            </Button>
-            <Text strong style={{ fontSize: 16 }}>我的足迹地图</Text>
-            <div style={{ width: 60 }} />
-          </div>
-          <FootprintMap trips={trips} spots={allSpots} height={mapHeight} />
-          <Text type="secondary" style={{ textAlign: 'center', display: 'block' }}>
-            共 {allSpots.filter((s) => s.lat && s.lng).length} 个坐标点
-          </Text>
-        </Space>
+        <div style={{
+          margin: isMobile ? '-12px' : '-24px',
+          marginTop: isMobile ? '-12px' : '-24px',
+          height: isMobile ? 'calc(100vh - 80px)' : 'calc(100vh - 112px)',
+        }}>
+          <FootprintMap
+            trips={trips}
+            spots={allSpots}
+            height="100%"
+            onBack={() => setShowFootprint(false)}
+            spotCount={spotCount}
+          />
+        </div>
       )
     }
 

@@ -1,7 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { MapContainer, Marker, useMap, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import { Input, Spin, Typography, theme } from 'antd'
 import { EnvironmentOutlined, SearchOutlined, AimOutlined } from '@ant-design/icons'
-import { useMapProvider, getTileLayerJs, toDisplayCoord, fromDisplayCoord } from '../mapConfig'
+import { useMapProvider, toDisplayCoord, fromDisplayCoord } from '../mapConfig'
+import MapTiles from './MapTiles'
 
 const { Text } = Typography
 
@@ -14,7 +17,6 @@ export interface LocationValue {
 interface Props {
   value?: LocationValue | null
   onChange?: (value: LocationValue | null) => void
-  /** 紧凑模式：不显示小地图和坐标详情，适合目的地选择 */
   compact?: boolean
   placeholder?: string
 }
@@ -27,15 +29,40 @@ interface NominatimResult {
   type: string
 }
 
-/** Nominatim 搜索（防抖） */
 async function searchLocation(query: string): Promise<NominatimResult[]> {
   if (!query.trim()) return []
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&accept-language=zh`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'PersonalAssistant/1.0' },
-  })
+  const res = await fetch(url, { headers: { 'User-Agent': 'PersonalAssistant/1.0' } })
   if (!res.ok) return []
   return res.json()
+}
+
+const pinIcon = (color: string) => L.divIcon({
+  className: '',
+  html: `<div style="width:28px;height:28px;position:relative;top:-14px">
+    <div style="width:20px;height:20px;background:${color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);margin:auto"></div>
+  </div>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 28],
+})
+
+/** Map click handler for position adjustment */
+function MapClickHandler({ onPick }: { onPick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onPick(e.latlng.lat, e.latlng.lng)
+    },
+  })
+  return null
+}
+
+/** Recenter map when position changes */
+function MapUpdater({ center }: { center: [number, number] }) {
+  const map = useMap()
+  useEffect(() => {
+    map.setView(center, map.getZoom())
+  }, [map, center])
+  return null
 }
 
 export default function LocationPicker({ value, onChange, compact, placeholder }: Props) {
@@ -48,12 +75,10 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
   const { token: { colorPrimary, colorBgElevated, colorBorder, borderRadiusLG, colorTextSecondary } } = theme.useToken()
   const [provider] = useMapProvider()
 
-  // 清理防抖定时器
   useEffect(() => {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [])
 
-  // 点击外部关闭下拉
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -102,58 +127,26 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
     setResults([])
   }
 
-  // 地图点选的 iframe HTML
-  const mapHtml = value
-    ? (() => {
-        const [dLat, dLng] = toDisplayCoord(value.lat, value.lng, provider)
-        return `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>
-<style>html,body,#map{margin:0;height:100%;width:100%;cursor:crosshair}</style>
-</head><body>
-<div id="map"></div>
-<script>
-var map=L.map('map').setView([${dLat},${dLng}],14);
-${getTileLayerJs(provider)}.addTo(map);
-var marker=L.marker([${dLat},${dLng}]).addTo(map);
-map.on('click',function(e){
-  marker.setLatLng(e.latlng);
-  window.parent.postMessage({type:'map-pick',lat:e.latlng.lat,lng:e.latlng.lng},'*');
-});
-<\\/script>
-</body></html>`
-      })()
-    : null
-
-  // 监听 iframe 消息（地图点选）
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'map-pick') {
-        // 将显示坐标转换回 WGS-84 存储
-        const [lat, lng] = fromDisplayCoord(e.data.lat, e.data.lng, provider)
-        onChange?.({ lat, lng, address: value?.address ?? '' })
-        // 异步获取地址名称（Nominatim 使用 WGS-84）
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh`, {
-          headers: { 'User-Agent': 'PersonalAssistant/1.0' },
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.display_name) {
-              onChange?.({ lat, lng, address: data.display_name })
-            }
-          })
-          .catch(() => {})
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
+  const handleMapPick = useCallback((displayLat: number, displayLng: number) => {
+    const [lat, lng] = fromDisplayCoord(displayLat, displayLng, provider)
+    onChange?.({ lat, lng, address: value?.address ?? '' })
+    // Reverse geocoding
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh`, {
+      headers: { 'User-Agent': 'PersonalAssistant/1.0' },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.display_name) {
+          onChange?.({ lat, lng, address: data.display_name })
+        }
+      })
+      .catch(() => {})
   }, [onChange, value?.address, provider])
+
+  const displayCenter = value ? toDisplayCoord(value.lat, value.lng, provider) : null
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
-      {/* 搜索框 */}
       <Input
         placeholder={placeholder ?? '搜索地点名称（如：西湖、东京塔）'}
         prefix={<SearchOutlined style={{ color: colorTextSecondary }} />}
@@ -165,7 +158,6 @@ map.on('click',function(e){
         onClear={handleClear}
       />
 
-      {/* 搜索结果下拉 */}
       {showResults && (
         <div
           style={{
@@ -210,7 +202,6 @@ map.on('click',function(e){
         </div>
       )}
 
-      {/* 已选位置信息 */}
       {value && compact && (
         <div style={{ marginTop: 4 }}>
           <Text type="secondary" style={{ fontSize: 11 }} ellipsis>
@@ -219,6 +210,7 @@ map.on('click',function(e){
           </Text>
         </div>
       )}
+
       {value && !compact && (
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
@@ -232,18 +224,25 @@ map.on('click',function(e){
               {value.address}
             </Text>
           )}
-          {/* 小地图，可点击调整位置 */}
-          {mapHtml && (
-            <iframe
-              srcDoc={mapHtml}
-              style={{ width: '100%', height: 180, border: 'none', borderRadius: 8, marginTop: 6 }}
-              sandbox="allow-scripts"
-              title="location-picker"
-            />
+          {displayCenter && (
+            <div style={{ marginTop: 6, borderRadius: 8, overflow: 'hidden' }}>
+              <MapContainer
+                key={`${provider}-${displayCenter[0].toFixed(4)}-${displayCenter[1].toFixed(4)}`}
+                center={displayCenter as [number, number]}
+                zoom={14}
+                style={{ height: 180, width: '100%', cursor: 'crosshair' }}
+                zoomControl={false}
+              >
+                <MapTiles provider={provider} />
+                <Marker position={displayCenter as [number, number]} icon={pinIcon(colorPrimary)} />
+                <MapClickHandler onPick={handleMapPick} />
+                <MapUpdater center={displayCenter as [number, number]} />
+              </MapContainer>
+              <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic' }}>
+                点击地图可微调位置
+              </Text>
+            </div>
           )}
-          <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic' }}>
-            点击地图可微调位置
-          </Text>
         </div>
       )}
     </div>
