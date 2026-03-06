@@ -64,6 +64,22 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [])
 
+  // Sync search input when value is set externally (e.g. quick check-in)
+  useEffect(() => {
+    if (value && !query) {
+      setQuery(value.address.split(',')[0] || value.address)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value?.lat, value?.lng])
+
+  // Sync search input text when value is set externally (e.g. quick check-in)
+  useEffect(() => {
+    if (value && !query) {
+      setQuery(value.address.split(',')[0] || value.address)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value?.lat, value?.lng])
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {

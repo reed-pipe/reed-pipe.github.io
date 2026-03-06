@@ -12,6 +12,7 @@ const { TextArea } = Input
 const MAX_PHOTOS = 5
 
 export interface SpotInitialData {
+  name?: string
   location?: LocationValue
   photos?: string[]
   date?: string
@@ -56,6 +57,9 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         form.resetFields()
         // Pre-fill from initialData (quick check-in)
         if (initialData) {
+          if (initialData.name) {
+            form.setFieldValue('name', initialData.name)
+          }
           if (initialData.date) {
             form.setFieldValue('date', dayjs(initialData.date))
           }

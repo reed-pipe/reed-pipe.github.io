@@ -66,18 +66,28 @@ export async function searchLocation(query: string): Promise<GeoSearchResult[]> 
 // --------------- Reverse Geocode ---------------
 
 export interface ReverseGeoResult {
+  name: string   // short POI / place name
   address: string
 }
 
 async function reverseAmap(lat: number, lng: number): Promise<ReverseGeoResult | null> {
   const [gcjLat, gcjLng] = wgs84ToGcj02(lat, lng)
-  const url = `https://restapi.amap.com/v3/geocode/regeo?key=${AMAP_KEY}&location=${gcjLng.toFixed(6)},${gcjLat.toFixed(6)}`
+  const url = `https://restapi.amap.com/v3/geocode/regeo?key=${AMAP_KEY}&location=${gcjLng.toFixed(6)},${gcjLat.toFixed(6)}&extensions=all&radius=200&poitype=&roadlevel=0`
   const res = await fetch(url)
   if (!res.ok) return null
   const data = await res.json()
   if (data.status !== '1' || !data.regeocode) return null
-  const addr = data.regeocode.formatted_address
-  return addr ? { address: addr } : null
+  const addr = data.regeocode.formatted_address || ''
+  // Try to get a meaningful short name from nearby POIs or address component
+  const pois = data.regeocode.pois as { name: string }[] | undefined
+  const comp = data.regeocode.addressComponent
+  const name = pois?.[0]?.name
+    || comp?.neighborhood?.name
+    || comp?.building?.name
+    || comp?.township
+    || addr.split(/省|市|区|县/).pop()
+    || addr
+  return addr ? { name, address: addr } : null
 }
 
 async function reverseNominatim(lat: number, lng: number): Promise<ReverseGeoResult | null> {
@@ -87,7 +97,9 @@ async function reverseNominatim(lat: number, lng: number): Promise<ReverseGeoRes
   )
   if (!res.ok) return null
   const data = await res.json()
-  return data.display_name ? { address: data.display_name } : null
+  if (!data.display_name) return null
+  const name = data.name || data.display_name.split(',')[0] || data.display_name
+  return { name, address: data.display_name }
 }
 
 export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeoResult | null> {

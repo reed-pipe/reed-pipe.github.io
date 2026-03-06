@@ -65,18 +65,20 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   }
 
   /** Get current GPS position */
-  const getGeoLocation = useCallback((): Promise<{ lat: number; lng: number; address: string } | null> => {
+  const getGeoLocation = useCallback((): Promise<{ lat: number; lng: number; address: string; name: string } | null> => {
     if (!navigator.geolocation) return Promise.resolve(null)
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           const { latitude: lat, longitude: lng } = pos.coords
           let address = ''
+          let name = ''
           try {
             const result = await reverseGeocode(lat, lng)
             address = result?.address ?? ''
+            name = result?.name ?? ''
           } catch { /* ignore */ }
-          resolve({ lat, lng, address })
+          resolve({ lat, lng, address, name })
         },
         () => resolve(null),
         { enableHighAccuracy: true, timeout: 10000 },
@@ -109,8 +111,9 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
     const date = today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
 
     setQuickData({
+      name: location?.name || undefined,
       photos: [compressed],
-      location: location ?? undefined,
+      location: location ? { lat: location.lat, lng: location.lng, address: location.address } : undefined,
       date,
     })
     setEditingSpot(null)
