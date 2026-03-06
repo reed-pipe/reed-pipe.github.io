@@ -372,20 +372,44 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
   const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t])), [trips])
 
   const markers = useMemo(() => {
-    const result: MarkerData[] = []
+    // Group spots by trip, sorted by date within each trip
+    const spotsByTrip = new Map<number, MarkerData[]>()
     for (const s of spots) {
       if (s.lat != null && s.lng != null) {
         const trip = tripMap.get(s.tripId)
-        result.push({
+        const list = spotsByTrip.get(s.tripId) ?? []
+        list.push({
           lat: s.lat, lng: s.lng, name: s.name,
           tripName: trip?.title ?? '', date: s.date,
           tripId: s.tripId, transport: s.transport,
         })
+        spotsByTrip.set(s.tripId, list)
       }
     }
-    const tripsWithSpotCoords = new Set(spots.filter((s) => s.lat != null && s.lng != null).map((s) => s.tripId))
-    for (const t of trips) {
-      if (t.lat != null && t.lng != null && !tripsWithSpotCoords.has(t.id)) {
+    // Sort spots within each trip
+    for (const list of spotsByTrip.values()) {
+      list.sort((a, b) => a.date.localeCompare(b.date))
+    }
+
+    // Build final markers: sorted by trip start date, with departure prepended
+    const sortedTrips = [...trips].sort((a, b) => a.startDate.localeCompare(b.startDate))
+    const result: MarkerData[] = []
+
+    for (const t of sortedTrips) {
+      const tripSpots = spotsByTrip.get(t.id!)
+      if (tripSpots && tripSpots.length > 0) {
+        // Add departure point before first spot (if trip has departure coords)
+        if (t.departureLat != null && t.departureLng != null) {
+          result.push({
+            lat: t.departureLat, lng: t.departureLng,
+            name: t.departureName ?? '出发地',
+            tripName: t.title, date: t.startDate,
+            tripId: t.id!, transport: undefined,
+          })
+        }
+        result.push(...tripSpots)
+      } else if (t.lat != null && t.lng != null) {
+        // Trip without spot coords — show destination only
         result.push({
           lat: t.lat, lng: t.lng, name: t.destination,
           tripName: t.title, date: t.startDate,
@@ -393,7 +417,6 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
         })
       }
     }
-    result.sort((a, b) => a.date.localeCompare(b.date))
     return result
   }, [trips, spots, tripMap])
 
