@@ -1,8 +1,8 @@
 import { encrypt, decrypt } from '../auth/crypto'
-import { getGist, updateGist } from './gist'
+import { getGist, updateGistFiles } from './gist'
 import { type AppDb } from '../db'
 
-const CURRENT_SYNC_VERSION = 1
+const CURRENT_SYNC_VERSION = 2
 
 interface SyncPayload {
   syncVersion: number
@@ -21,6 +21,83 @@ interface PlainData {
   }
 }
 
+interface BlobData {
+  /** tripSpot id → photos base64[] */
+  spotPhotos: Record<number, string[]>
+  /** trip id → coverPhoto base64 */
+  tripCovers: Record<number, string>
+}
+
+const HASH_KEY = 'pa_sync_hashes'
+
+/** Simple fast hash for change detection (not cryptographic) */
+function simpleHash(str: string): string {
+  let h = 0
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0
+  }
+  return h.toString(36)
+}
+
+function getStoredHashes(): { data?: string; blob?: string } {
+  try {
+    return JSON.parse(localStorage.getItem(HASH_KEY) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
+function storeHashes(hashes: { data?: string; blob?: string }) {
+  localStorage.setItem(HASH_KEY, JSON.stringify(hashes))
+}
+
+/** Strip photos/covers from records, return separate blob */
+function splitBlobs(
+  trips: Array<Record<string, unknown>>,
+  tripSpots: Array<Record<string, unknown>>,
+): { cleanTrips: Array<Record<string, unknown>>; cleanSpots: Array<Record<string, unknown>>; blob: BlobData } {
+  const blob: BlobData = { spotPhotos: {}, tripCovers: {} }
+
+  const cleanTrips = trips.map((t) => {
+    const copy = { ...t }
+    if (copy.coverPhoto) {
+      blob.tripCovers[copy.id as number] = copy.coverPhoto as string
+      delete copy.coverPhoto
+    }
+    return copy
+  })
+
+  const cleanSpots = tripSpots.map((s) => {
+    const copy = { ...s }
+    const photos = copy.photos as string[] | undefined
+    if (photos && photos.length > 0) {
+      blob.spotPhotos[copy.id as number] = photos
+      copy.photos = []
+    }
+    return copy
+  })
+
+  return { cleanTrips, cleanSpots, blob }
+}
+
+/** Merge blobs back into records */
+function mergeBlobs(
+  trips: Array<Record<string, unknown>>,
+  tripSpots: Array<Record<string, unknown>>,
+  blob: BlobData | null,
+): void {
+  if (!blob) return
+  for (const t of trips) {
+    const cover = blob.tripCovers[t.id as number]
+    if (cover) t.coverPhoto = cover
+  }
+  for (const s of tripSpots) {
+    const photos = blob.spotPhotos[s.id as number]
+    if (photos) s.photos = photos
+  }
+}
+
+
 export async function pushData(
   db: AppDb,
   key: CryptoKey,
@@ -34,32 +111,56 @@ export async function pushData(
     db.tripSpots.toArray(),
   ])
 
+  const { cleanTrips, cleanSpots, blob } = splitBlobs(
+    trips as unknown as Array<Record<string, unknown>>,
+    tripSpots as unknown as Array<Record<string, unknown>>,
+  )
+
   const plain: PlainData = {
     lastModified: Date.now(),
     tables: {
       kv: kvItems.map((item) => ({ key: item.key, value: item.value })),
       weightRecords: weightRecords as unknown as Array<Record<string, unknown>>,
       bodyMeasurements: bodyMeasurements as unknown as Array<Record<string, unknown>>,
-      trips: trips as unknown as Array<Record<string, unknown>>,
-      tripSpots: tripSpots as unknown as Array<Record<string, unknown>>,
+      trips: cleanTrips,
+      tripSpots: cleanSpots,
     },
   }
 
-  const plaintext = JSON.stringify(plain)
-  const { iv, ciphertext } = await encrypt(plaintext, key)
+  const dataJson = JSON.stringify(plain)
+  const blobJson = JSON.stringify(blob)
 
-  const payload: SyncPayload = {
-    syncVersion: CURRENT_SYNC_VERSION,
-    iv,
-    data: ciphertext,
+  const dataHash = simpleHash(dataJson)
+  const blobHash = simpleHash(blobJson)
+  const stored = getStoredHashes()
+
+  const filesToUpdate: Record<string, string> = {}
+
+  // Resolve filenames from gist
+  const gist = await getGist(dataGistId)
+  const username = Object.keys(gist.files)[0]?.replace('pa-data-', '').replace('.json', '') ?? 'user'
+  const dataFileName = `pa-data-${username}.json`
+  const blobFileName = `pa-blob-${username}.json`
+
+  if (dataHash !== stored.data) {
+    const { iv, ciphertext } = await encrypt(dataJson, key)
+    const payload: SyncPayload = { syncVersion: CURRENT_SYNC_VERSION, iv, data: ciphertext }
+    filesToUpdate[dataFileName] = JSON.stringify(payload)
   }
 
-  // Find the filename in the gist
-  const gist = await getGist(dataGistId)
-  const filename = Object.keys(gist.files)[0]
-  if (!filename) throw new Error('Data gist has no files')
+  if (blobHash !== stored.blob) {
+    const { iv, ciphertext } = await encrypt(blobJson, key)
+    const payload: SyncPayload = { syncVersion: CURRENT_SYNC_VERSION, iv, data: ciphertext }
+    filesToUpdate[blobFileName] = JSON.stringify(payload)
+  }
 
-  await updateGist(dataGistId, filename, JSON.stringify(payload))
+  if (Object.keys(filesToUpdate).length === 0) {
+    // Nothing changed
+    return
+  }
+
+  await updateGistFiles(dataGistId, filesToUpdate)
+  storeHashes({ data: dataHash, blob: blobHash })
 }
 
 export async function pullData(
@@ -68,18 +169,40 @@ export async function pullData(
   dataGistId: string,
 ): Promise<boolean> {
   const gist = await getGist(dataGistId)
-  const file = Object.values(gist.files)[0]
-  if (!file) throw new Error('Data gist has no files')
+  const files = gist.files
+  const keys = Object.keys(files)
 
-  const payload: SyncPayload = JSON.parse(file.content)
+  // Find data file (supports both old and new format)
+  const dataFileKey = keys.find((k) => k.startsWith('pa-data-')) ?? keys[0]
+  if (!dataFileKey) throw new Error('Data gist has no files')
 
-  // Empty data gist (newly registered)
-  if (!payload.iv || !payload.data) return false
+  const dataPayload: SyncPayload = JSON.parse(files[dataFileKey]!.content)
+  if (!dataPayload.iv || !dataPayload.data) return false
 
-  const plaintext = await decrypt(payload.data, payload.iv, key)
+  const plaintext = await decrypt(dataPayload.data, dataPayload.iv, key)
   const plain: PlainData = JSON.parse(plaintext)
 
-  // Clear local and write remote data
+  // Try to load blob file (new format)
+  let blob: BlobData | null = null
+  const blobFileKey = keys.find((k) => k.startsWith('pa-blob-'))
+  if (blobFileKey) {
+    try {
+      const blobPayload: SyncPayload = JSON.parse(files[blobFileKey]!.content)
+      if (blobPayload.iv && blobPayload.data) {
+        const blobText = await decrypt(blobPayload.data, blobPayload.iv, key)
+        blob = JSON.parse(blobText)
+      }
+    } catch { /* blob file missing or corrupt — continue without photos */ }
+  }
+
+  const tripsArr = (plain.tables.trips ?? []) as Array<Record<string, unknown>>
+  const spotsArr = (plain.tables.tripSpots ?? []) as Array<Record<string, unknown>>
+
+  // Merge photos/covers back if v2 split format
+  mergeBlobs(tripsArr, spotsArr, blob)
+
+  // For backward compat: old v1 data already has photos inline, mergeBlobs is a no-op
+
   await db.transaction('rw', [db.kv, db.weightRecords, db.bodyMeasurements, db.trips, db.tripSpots], async () => {
     await db.kv.clear()
     await db.weightRecords.clear()
@@ -96,13 +219,18 @@ export async function pullData(
     if (plain.tables.bodyMeasurements?.length) {
       await db.bodyMeasurements.bulkPut(plain.tables.bodyMeasurements as never[])
     }
-    if (plain.tables.trips?.length) {
-      await db.trips.bulkPut(plain.tables.trips as never[])
+    if (tripsArr.length) {
+      await db.trips.bulkPut(tripsArr as never[])
     }
-    if (plain.tables.tripSpots?.length) {
-      await db.tripSpots.bulkPut(plain.tables.tripSpots as never[])
+    if (spotsArr.length) {
+      await db.tripSpots.bulkPut(spotsArr as never[])
     }
   })
+
+  // Update local hashes so next push knows what's on cloud
+  const dataHash = simpleHash(JSON.stringify(plain))
+  const blobHash = blob ? simpleHash(JSON.stringify(blob)) : undefined
+  storeHashes({ data: dataHash, blob: blobHash })
 
   return true
 }

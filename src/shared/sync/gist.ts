@@ -70,3 +70,21 @@ export async function updateGist(
   if (!res.ok) throw new Error(`Update gist failed: ${res.status}`)
   return res.json()
 }
+
+/** Update multiple files in one API call */
+export async function updateGistFiles(
+  gistId: string,
+  files: Record<string, string>,
+): Promise<GistInfo> {
+  const body: Record<string, { content: string }> = {}
+  for (const [name, content] of Object.entries(files)) {
+    body[name] = { content }
+  }
+  const res = await fetch(`${API}/gists/${gistId}`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ files: body }),
+  })
+  if (!res.ok) throw new Error(`Update gist files failed: ${res.status}`)
+  return res.json()
+}
