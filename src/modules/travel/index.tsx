@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Space, Select, Typography, Grid, Empty, message } from 'antd'
+import { Button, Space, Select, Typography, Grid, Empty, Modal, message } from 'antd'
 import { PlusOutlined, GlobalOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
@@ -10,6 +10,7 @@ import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
 import TravelStats from './components/TravelStats'
+import TripMap from './components/TripMap'
 import { exportTravelCSV } from './utils'
 
 const { Text } = Typography
@@ -27,6 +28,7 @@ export default function Travel() {
   const [showFootprint, setShowFootprint] = useState(false)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [yearFilter, setYearFilter] = useState<string | null>(null)
+  const [routeTripId, setRouteTripId] = useState<number | null>(null)
 
   const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
   const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
@@ -168,9 +170,20 @@ export default function Travel() {
               gap: 16,
             }}
           >
-            {filteredTrips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} onClick={() => setSelectedTripId(trip.id)} />
-            ))}
+            {filteredTrips.map((trip) => {
+              const tripSpots = allSpots.filter((s) => s.tripId === trip.id)
+              const hasCoords = tripSpots.some((s) => s.lat != null && s.lng != null) ||
+                (trip.departureLat != null && trip.departureLng != null)
+              return (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  onClick={() => setSelectedTripId(trip.id)}
+                  hasCoords={hasCoords}
+                  onPlayRoute={() => setRouteTripId(trip.id)}
+                />
+              )
+            })}
           </div>
         ) : trips.length > 0 ? (
           <Empty description="没有匹配的旅行" />
@@ -181,6 +194,9 @@ export default function Travel() {
     )
   }
 
+  const routeTrip = routeTripId ? trips.find((t) => t.id === routeTripId) ?? null : null
+  const routeSpots = routeTripId ? allSpots.filter((s) => s.tripId === routeTripId) : []
+
   return (
     <>
       {renderContent()}
@@ -190,6 +206,18 @@ export default function Travel() {
         onClose={() => setFormOpen(false)}
         onSaved={notifyChanged}
       />
+      <Modal
+        title={routeTrip ? `${routeTrip.title} — 路线地图` : '路线地图'}
+        open={routeTripId !== null}
+        onCancel={() => setRouteTripId(null)}
+        footer={null}
+        width={isMobile ? '95vw' : 720}
+        styles={{ body: { padding: '12px 0' } }}
+      >
+        {routeTrip && (
+          <TripMap trip={routeTrip} spots={routeSpots} height={isMobile ? 350 : 450} />
+        )}
+      </Modal>
     </>
   )
 }
