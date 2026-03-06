@@ -177,6 +177,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           {/* Native label→input: works in iOS PWA standalone mode */}
           <label
             style={{
+              position: 'relative',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
