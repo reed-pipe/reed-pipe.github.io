@@ -12,7 +12,7 @@ import {
 } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { formatDateRange, tripDays, formatCost, compressImage } from '../utils'
+import { formatDateRange, tripDays, formatCost, compressImage, pickImage } from '../utils'
 import SpotTimeline from './SpotTimeline'
 import SpotForm, { type SpotInitialData } from './SpotForm'
 import TripMap from './TripMap'
@@ -87,11 +87,11 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
     })
   }, [])
 
-  /** Quick check-in: handle file from native label→input */
-  const handleQuickCapture = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  /** Quick check-in: pick image via dynamic input (MIUI PWA compatible) */
+  const handleQuickCapture = useCallback(async () => {
+    const files = await pickImage()
+    const file = files[0]
     if (!file) return
-    e.target.value = ''
 
     message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
 
@@ -174,10 +174,9 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text strong style={{ fontSize: 15 }}>打卡点 ({spots.length})</Text>
         <Space size={8}>
-          {/* Native label→input: works in iOS PWA standalone mode */}
-          <label
+          <div
+            onClick={handleQuickCapture}
             style={{
-              position: 'relative',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
@@ -193,14 +192,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           >
             <CameraOutlined />
             快速打卡
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleQuickCapture}
-              style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap' }}
-            />
-          </label>
+          </div>
           <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingSpot(null); setQuickData(null); setSpotFormOpen(true) }}>
             添加
           </Button>

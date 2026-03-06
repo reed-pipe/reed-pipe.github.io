@@ -5,7 +5,7 @@ import type { UploadFile } from 'antd'
 import dayjs from 'dayjs'
 import type { TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { compressImage, TRANSPORT_OPTIONS } from '../utils'
+import { compressImage, pickImage, TRANSPORT_OPTIONS } from '../utils'
 import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
@@ -162,17 +162,19 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
           <Upload
             listType="picture-card"
             fileList={uploadFileList}
-            beforeUpload={(file) => handlePhotoUpload(file as unknown as File)}
+            beforeUpload={() => false}
+            openFileDialogOnClick={false}
             onRemove={(file) => {
               const idx = parseInt(file.uid)
               setPhotos((prev) => prev.filter((_, i) => i !== idx))
             }}
             maxCount={MAX_PHOTOS}
-            accept="image/*"
-            capture="environment"
           >
             {photos.length < MAX_PHOTOS && (
-              <div>
+              <div onClick={async () => {
+                const files = await pickImage()
+                if (files[0]) await handlePhotoUpload(files[0])
+              }}>
                 <PlusOutlined />
                 <div style={{ marginTop: 8, fontSize: 12 }}>上传</div>
               </div>

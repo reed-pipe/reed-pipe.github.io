@@ -67,6 +67,48 @@ export function computeStats(trips: Trip[], spots: TripSpot[]) {
   return { totalTrips, totalDays, totalCost, destinations: destinations.size, totalSpots }
 }
 
+/**
+ * 弹出系统文件选择器（兼容 MIUI PWA standalone 模式）。
+ * 动态创建 input 元素并追加到 body，避免隐藏 input 在部分 WebView 不触发的问题。
+ */
+export function pickImage(multiple = false): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    if (multiple) input.multiple = true
+    // Off-screen but not hidden — MIUI needs the element to be "visible"
+    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;'
+    document.body.appendChild(input)
+
+    let resolved = false
+    const cleanup = () => {
+      if (document.body.contains(input)) document.body.removeChild(input)
+    }
+    const done = (files: File[]) => {
+      if (resolved) return
+      resolved = true
+      cleanup()
+      resolve(files)
+    }
+
+    input.addEventListener('change', () => {
+      done(Array.from(input.files ?? []))
+    })
+
+    // Fallback: if user cancels, resolve empty after focus returns
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!resolved) done([])
+      }, 600)
+    }
+    window.addEventListener('focus', onFocus, { once: true })
+
+    // Small delay for WebView compatibility
+    requestAnimationFrame(() => input.click())
+  })
+}
+
 /** 压缩图片到指定最大宽度和质量 */
 export function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<string> {
   return new Promise((resolve, reject) => {
