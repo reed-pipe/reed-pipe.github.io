@@ -150,12 +150,32 @@ function RouteAnimator({ segments, playing, colorPrimary, onDone }: {
   return null
 }
 
-function makeIcon(label: string, size: number, bg: string, fontSize: number): L.DivIcon {
+function makeIcon(label: string, isHome: boolean): L.DivIcon {
+  const sz = isHome ? 32 : 28
+  const bg = isHome
+    ? 'linear-gradient(135deg, #faad14, #ffc53d)'
+    : T.gradient
+  const shadow = isHome
+    ? '0 3px 10px rgba(250,173,20,0.4)'
+    : `0 3px 10px ${T.shadow}`
+  const fs = isHome ? 15 : 11
   return L.divIcon({
     className: '',
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${fontSize}px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${label}</div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    html: `<div style="position:relative;width:${sz}px;height:${sz + 8}px;filter:drop-shadow(${shadow})">
+      <div style="
+        width:${sz}px;height:${sz}px;
+        border-radius:50% 50% 50% 0;
+        transform:rotate(-45deg);
+        background:${bg};
+        border:2.5px solid rgba(255,255,255,0.9);
+        box-shadow:inset 0 -2px 4px rgba(0,0,0,0.15), inset 0 2px 4px rgba(255,255,255,0.3);
+        display:flex;align-items:center;justify-content:center;
+      ">
+        <span style="transform:rotate(45deg);color:#fff;font-size:${fs}px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.2)">${label}</span>
+      </div>
+    </div>`,
+    iconSize: [sz, sz + 8],
+    iconAnchor: [sz / 2, sz + 8],
   })
 }
 
@@ -231,12 +251,7 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
           <Marker
             key={i}
             position={[p.dLat, p.dLng]}
-            icon={makeIcon(
-              p.isHome ? '🏠' : String(i),
-              p.isHome ? 28 : 22,
-              p.isHome ? '#faad14' : colorPrimary,
-              p.isHome ? 16 : 12,
-            )}
+            icon={makeIcon(p.isHome ? '🏠' : String(i), p.isHome)}
           >
             <Popup><b>{p.name}</b></Popup>
           </Marker>

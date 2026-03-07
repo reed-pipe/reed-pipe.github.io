@@ -12,14 +12,13 @@ interface Props {
 }
 
 export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props) {
-  const { token: { colorTextSecondary, colorBgLayout } } = theme.useToken()
-  const colorPrimary = T.primary
+  const { token: { colorTextSecondary } } = theme.useToken()
   const grouped = groupSpotsByDate(spots)
 
   if (spots.length === 0) {
     return (
       <div style={{ padding: 48, textAlign: 'center' }}>
-        <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.25 }}>📍</div>
+        <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.2 }}>📍</div>
         <Text type="secondary" style={{ fontSize: 13 }}>暂无打卡点，点击上方按钮添加</Text>
       </div>
     )
@@ -29,106 +28,102 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
   const dayNum = (date: string) => Math.floor((new Date(date + 'T00:00:00').getTime() - startMs) / 86_400_000) + 1
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       {[...grouped.entries()].map(([date, daySpots]) => (
         <div key={date}>
-          {/* Day header */}
+          {/* Day header — glass chip */}
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
-            padding: '5px 14px',
+            padding: '6px 16px',
             borderRadius: 20,
+            ...T.glassButton,
             background: T.gradientLight,
-            marginBottom: 12,
-            boxShadow: `0 1px 4px ${T.shadowLight}`,
+            border: `1px solid ${T.primary}12`,
+            marginBottom: 14,
+            boxShadow: `0 2px 8px ${T.shadowLight}, inset 0 1px 0 rgba(255,255,255,0.7)`,
           }}>
-            <ClockCircleOutlined style={{ color: colorPrimary, fontSize: 12 }} />
-            <Text strong style={{ fontSize: 13, color: colorPrimary }}>
+            <ClockCircleOutlined style={{ color: T.primary, fontSize: 12 }} />
+            <Text strong style={{ fontSize: 13, color: T.primary }}>
               Day {dayNum(date)}
             </Text>
             <Text style={{ fontSize: 12, color: colorTextSecondary }}>{date}</Text>
           </div>
 
-          {/* Timeline with connecting line */}
-          <div style={{ position: 'relative', paddingLeft: 20 }}>
-            {/* Vertical line */}
+          {/* Timeline */}
+          <div style={{ position: 'relative', paddingLeft: 22 }}>
+            {/* Gradient vertical line */}
             <div style={{
               position: 'absolute',
-              left: 7,
-              top: 8,
-              bottom: daySpots.length > 1 ? 8 : 0,
+              left: 8,
+              top: 10,
+              bottom: daySpots.length > 1 ? 10 : 0,
               width: 2,
-              background: daySpots.length > 1 ? `linear-gradient(${T.primary}40, ${T.primary}10)` : 'transparent',
+              background: daySpots.length > 1
+                ? `linear-gradient(${T.primary}50, ${T.primary}10)`
+                : 'transparent',
               borderRadius: 1,
             }} />
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {daySpots.map((spot) => (
                 <div key={spot.id} style={{ position: 'relative' }}>
-                  {/* Timeline dot */}
+                  {/* Glowing timeline dot */}
                   <div style={{
                     position: 'absolute',
-                    left: -17,
-                    top: 14,
-                    width: 10,
-                    height: 10,
+                    left: -19,
+                    top: 16,
+                    width: 12,
+                    height: 12,
                     borderRadius: '50%',
-                    background: colorPrimary,
-                    border: '2px solid #fff',
-                    boxShadow: `0 0 0 2px ${colorPrimary}30`,
+                    background: T.gradient,
+                    border: '2.5px solid #fff',
+                    boxShadow: `0 0 0 3px ${T.primary}20, 0 2px 4px ${T.shadow}`,
                     zIndex: 1,
                   }} />
 
-                  {/* Spot card */}
+                  {/* Glass spot card */}
                   <div
                     onClick={() => onEditSpot(spot)}
                     style={{
-                      padding: '12px 14px',
-                      borderRadius: 14,
-                      background: '#fff',
+                      ...T.glassCard,
+                      padding: '13px 15px',
                       cursor: 'pointer',
-                      transition: 'all 0.25s ease',
-                      border: '1px solid rgba(0,0,0,0.04)',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = `0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px ${T.primary}20`
-                      e.currentTarget.style.transform = 'translateY(-1px)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'
-                      e.currentTarget.style.transform = 'translateY(0)'
-                    }}
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, T.glassCardHover)}
+                    onMouseLeave={(e) => Object.assign(e.currentTarget.style, {
+                      boxShadow: T.glassCard.boxShadow,
+                      transform: 'translateY(0)',
+                    })}
                   >
-                    {/* Header: spot name */}
+                    {/* Header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <EnvironmentOutlined style={{ color: colorPrimary, fontSize: 14 }} />
+                      <EnvironmentOutlined style={{ color: T.primary, fontSize: 14 }} />
                       <Text strong style={{ fontSize: 14 }}>{spot.name}</Text>
                     </div>
 
-                    {/* Tags row */}
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 20, marginBottom: spot.photos.length > 0 || spot.note || spot.address ? 6 : 0 }}>
+                    {/* Tags */}
+                    <div style={{
+                      display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 20,
+                      marginBottom: spot.photos.length > 0 || spot.note || spot.address ? 6 : 0,
+                    }}>
                       {spot.transport && (
                         <span style={{
-                          fontSize: 11,
-                          padding: '2px 10px',
-                          borderRadius: 12,
-                          background: T.gradientLight,
-                          color: colorPrimary,
-                          fontWeight: 500,
+                          fontSize: 11, padding: '2px 10px', borderRadius: 12,
+                          background: T.gradientSubtle,
+                          color: T.primary, fontWeight: 500,
+                          boxShadow: `inset 0 -1px 0 ${T.primary}08`,
                         }}>
                           {getTransportEmoji(spot.transport)} {getTransportLabel(spot.transport)}
                         </span>
                       )}
                       {spot.cost != null && spot.cost > 0 && (
                         <span style={{
-                          fontSize: 11,
-                          padding: '2px 10px',
-                          borderRadius: 12,
+                          fontSize: 11, padding: '2px 10px', borderRadius: 12,
                           background: 'linear-gradient(135deg, #fff7e6, #fffbe6)',
-                          color: '#d48806',
-                          fontWeight: 500,
+                          color: '#d48806', fontWeight: 500,
+                          boxShadow: 'inset 0 -1px 0 rgba(212,136,6,0.08)',
                         }}>
                           {formatCost(spot.cost)}
                         </span>
@@ -142,22 +137,18 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
                       </Text>
                     )}
 
-                    {/* Note */}
+                    {/* Note — glass inset */}
                     {spot.note && (
-                      <div style={{
-                        marginTop: 6,
-                        paddingLeft: 20,
-                      }}>
+                      <div style={{ marginTop: 6, paddingLeft: 20 }}>
                         <Paragraph
                           type="secondary"
                           style={{
-                            fontSize: 12,
-                            marginBottom: 0,
-                            fontStyle: 'italic',
-                            padding: '6px 10px',
-                            background: colorBgLayout,
-                            borderRadius: 8,
-                            borderLeft: `2px solid ${colorPrimary}30`,
+                            fontSize: 12, marginBottom: 0, fontStyle: 'italic',
+                            padding: '8px 12px',
+                            background: 'rgba(0,0,0,0.02)',
+                            borderRadius: 10,
+                            borderLeft: `2px solid ${T.primary}30`,
+                            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.03)',
                           }}
                           ellipsis={{ rows: 2 }}
                         >
@@ -172,11 +163,9 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
                         <Image.PreviewGroup>
                           {spot.photos.map((photo, i) => (
                             <div key={i} style={{
-                              width: 64,
-                              height: 64,
-                              borderRadius: 10,
+                              width: 64, height: 64, borderRadius: 12,
                               overflow: 'hidden',
-                              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.3)',
                             }}>
                               <Image
                                 src={photo}

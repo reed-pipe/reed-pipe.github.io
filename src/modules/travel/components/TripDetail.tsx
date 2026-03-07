@@ -37,8 +37,6 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   const [quickData, setQuickData] = useState<SpotInitialData | null>(null)
   const db = useDb()
   const { token: { colorTextSecondary } } = theme.useToken()
-  const colorPrimary = T.primary
-  const colorPrimaryBg = T.primaryBg
 
   const days = tripDays(trip.startDate, trip.endDate)
   const spotCostTotal = spots.reduce((s, sp) => s + (sp.cost ?? 0), 0)
@@ -124,80 +122,73 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Header bar */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '4px 0 8px',
       }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ padding: '4px 8px', fontWeight: 500 }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
+          style={{ padding: '4px 8px', fontWeight: 500, borderRadius: 10 }}
+        >
           返回
         </Button>
         <Space size={4}>
-          <Button
-            type="text"
-            icon={<EditOutlined />}
-            onClick={onEdit}
+          <Button type="text" icon={<EditOutlined />} onClick={onEdit}
             style={{
-              borderRadius: 10,
-              background: T.primaryBg,
+              ...T.glassButton,
               color: T.primary,
+              background: T.primaryBg,
+              padding: '4px 10px', height: 'auto',
             }}
           />
-          <Button
-            type="text"
-            icon={<DeleteOutlined />}
-            onClick={handleDelete}
-            danger
-            style={{ borderRadius: 10, background: '#ff4d4f08' }}
+          <Button type="text" icon={<DeleteOutlined />} onClick={handleDelete} danger
+            style={{ borderRadius: 12, background: '#ff4d4f08', padding: '4px 10px', height: 'auto' }}
           />
         </Space>
       </div>
 
-      {/* Hero: cover photo with gradient overlay */}
+      {/* Hero: cover photo with glass overlay */}
       {trip.coverPhoto ? (
         <div style={{
-          position: 'relative',
-          borderRadius: 18,
-          overflow: 'hidden',
-          maxHeight: 200,
-          marginBottom: 14,
+          position: 'relative', borderRadius: 20, overflow: 'hidden',
+          maxHeight: 200, marginBottom: 14,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
         }}>
           <img src={trip.coverPhoto} alt={trip.title} style={{ width: '100%', objectFit: 'cover', display: 'block' }} />
           <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: '40px 16px 14px',
-            background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            padding: '48px 16px 14px',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.55))',
+            backdropFilter: 'blur(1px)',
           }}>
-            <Title level={4} style={{ marginBottom: 2, color: '#fff', fontSize: 18, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>
+            <Title level={4} style={{
+              marginBottom: 2, color: '#fff', fontSize: 18,
+              textShadow: '0 1px 6px rgba(0,0,0,0.3)',
+              letterSpacing: '0.02em',
+            }}>
               {trip.title}
             </Title>
-            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.88)', fontSize: 12 }}>
               {trip.destination} · {formatDateRange(trip.startDate, trip.endDate)}
             </Text>
           </div>
         </div>
       ) : (
         <div style={{ marginBottom: 10 }}>
-          <Title level={4} style={{ marginBottom: 4, fontSize: 18 }}>{trip.title}</Title>
+          <Title level={4} style={{ marginBottom: 4, fontSize: 18, letterSpacing: '0.01em' }}>{trip.title}</Title>
         </div>
       )}
 
-      {/* Info chips */}
+      {/* Info chips — glass style */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {trip.departureName && (
-          <InfoChip icon="🏠" text={`${trip.departureName} →`} bg={colorPrimaryBg} color={colorTextSecondary} />
+          <InfoChip icon="🏠" text={`${trip.departureName} →`} variant="default" />
         )}
-        <InfoChip icon={<EnvironmentOutlined style={{ fontSize: 11 }} />} text={trip.destination} bg={colorPrimaryBg} color={colorPrimary} bold />
-        <InfoChip icon={<CalendarOutlined style={{ fontSize: 11 }} />} text={`${days}天`} bg={colorPrimaryBg} color={colorTextSecondary} />
+        <InfoChip icon={<EnvironmentOutlined style={{ fontSize: 11 }} />} text={trip.destination} variant="primary" />
+        <InfoChip icon={<CalendarOutlined style={{ fontSize: 11 }} />} text={`${days}天`} variant="default" />
         {(trip.totalCost != null && trip.totalCost > 0) && (
           <InfoChip
             icon={<DollarOutlined style={{ fontSize: 11 }} />}
             text={`${formatCost(trip.totalCost)}${spotCostTotal > 0 ? ` (地点${formatCost(spotCostTotal)})` : ''}`}
-            bg="#fff7e6"
-            color="#d48806"
+            variant="gold"
           />
         )}
       </div>
@@ -206,17 +197,12 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       {(trip.tags.length > 0 || (trip.rating != null && trip.rating > 0)) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
           {trip.tags.map((tag) => (
-            <span
-              key={tag}
-              style={{
-                padding: '3px 12px',
-                borderRadius: 14,
-                fontSize: 12,
-                background: T.gradientLight,
-                color: colorPrimary,
-                fontWeight: 500,
-              }}
-            >
+            <span key={tag} style={{
+              padding: '4px 14px', borderRadius: 14, fontSize: 12,
+              background: T.gradientSubtle,
+              color: T.primary, fontWeight: 500,
+              boxShadow: `inset 0 -1px 0 ${T.primary}10, inset 0 1px 0 rgba(255,255,255,0.5)`,
+            }}>
               {tag}
             </span>
           ))}
@@ -228,44 +214,32 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
 
       {/* Spot management bar */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '10px 0 6px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 0 8px',
         borderTop: '1px solid rgba(0,0,0,0.04)',
       }}>
         <Text strong style={{ fontSize: 15 }}>打卡点 ({spots.length})</Text>
         <Space size={6}>
-          <div
-            style={{
-              position: 'relative',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 14px',
-              fontSize: 13,
-              borderRadius: 20,
-              background: T.gradient,
-              color: '#fff',
-              cursor: 'pointer',
-              boxShadow: `0 2px 8px ${T.shadow}`,
-              fontWeight: 500,
-            }}
-          >
+          <div style={{
+            position: 'relative',
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '6px 16px', fontSize: 13, borderRadius: 20,
+            background: T.gradient,
+            color: '#fff', cursor: 'pointer', fontWeight: 600,
+            boxShadow: `0 3px 12px ${T.shadow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
+          }}>
             <CameraOutlined style={{ fontSize: 13 }} />
             打卡
             <input
-              type="file"
-              accept="image/*"
+              type="file" accept="image/*"
               onChange={handleQuickCapture}
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', zIndex: 1 }}
             />
           </div>
           <Button
-            size="small"
-            icon={<PlusOutlined />}
-            shape="round"
+            size="small" icon={<PlusOutlined />} shape="round"
             onClick={() => { setEditingSpot(null); setQuickData(null); setSpotFormOpen(true) }}
+            style={{ borderRadius: 20 }}
           >
             添加
           </Button>
@@ -279,13 +253,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           {
             key: 'timeline',
             label: '时间线',
-            children: (
-              <SpotTimeline
-                spots={spots}
-                tripStartDate={trip.startDate}
-                onEditSpot={handleEditSpot}
-              />
-            ),
+            children: <SpotTimeline spots={spots} tripStartDate={trip.startDate} onEditSpot={handleEditSpot} />,
           },
           {
             key: 'map',
@@ -300,14 +268,14 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
         ]}
       />
 
-      {/* Summary */}
+      {/* Summary — glass inset */}
       {trip.summary && (
         <div style={{
           padding: '14px 16px',
+          ...T.glassCard,
           background: T.gradientLight,
-          borderRadius: 16,
           borderLeft: `3px solid ${T.primary}`,
-          boxShadow: `0 1px 4px ${T.shadowLight}`,
+          boxShadow: `0 2px 8px ${T.shadowLight}, inset 0 1px 0 rgba(255,255,255,0.7)`,
         }}>
           <Text style={{ fontSize: 11, color: colorTextSecondary, display: 'block', marginBottom: 6, fontWeight: 500 }}>
             ✍️ 旅行感想
@@ -331,22 +299,36 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   )
 }
 
-/** Reusable info chip */
-function InfoChip({ icon, text, bg, color, bold }: {
-  icon: React.ReactNode; text: string; bg: string; color: string; bold?: boolean
+/** Glass-style info chip */
+function InfoChip({ icon, text, variant }: {
+  icon: React.ReactNode; text: string
+  variant: 'primary' | 'default' | 'gold'
 }) {
+  const styles: Record<string, React.CSSProperties> = {
+    primary: {
+      background: T.primaryBg,
+      color: T.primary,
+      fontWeight: 600,
+      boxShadow: `inset 0 -1px 0 ${T.primary}10, inset 0 1px 0 rgba(255,255,255,0.5)`,
+    },
+    default: {
+      background: 'rgba(0,0,0,0.03)',
+      color: '#888',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+    },
+    gold: {
+      background: '#fff7e6',
+      color: '#d48806',
+      boxShadow: 'inset 0 -1px 0 rgba(212,136,6,0.08), inset 0 1px 0 rgba(255,255,255,0.5)',
+    },
+  }
   return (
     <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 4,
-      padding: '4px 12px',
-      borderRadius: 20,
-      background: bg,
-      fontSize: 12,
-      color,
-      lineHeight: '16px',
-      fontWeight: bold ? 600 : 400,
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '5px 14px', borderRadius: 20,
+      fontSize: 12, lineHeight: '16px',
+      border: '1px solid rgba(255,255,255,0.3)',
+      ...styles[variant],
     }}>
       {icon} {text}
     </span>

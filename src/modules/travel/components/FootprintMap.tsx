@@ -1,5 +1,5 @@
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react'
-import { MapContainer, CircleMarker, Polyline, Popup, useMap } from 'react-leaflet'
+import { MapContainer, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { Button } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined, PauseOutlined, CloseOutlined } from '@ant-design/icons'
@@ -30,6 +30,64 @@ interface Props {
   onTripClick?: (tripId: number) => void
 }
 
+// --------------- Pin icon builders ---------------
+
+function pinIcon(label: string, opts: {
+  bg: string; size?: number; fontSize?: number;
+  shadow?: string; glow?: boolean;
+}): L.DivIcon {
+  const sz = opts.size ?? 30
+  const fs = opts.fontSize ?? 11
+  const shadow = opts.shadow ?? `0 3px 10px rgba(0,0,0,0.25)`
+  const glow = opts.glow ? `0 0 8px ${T.primary}60,` : ''
+  // Teardrop shape via border-radius trick
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:${sz}px;height:${sz + 8}px;filter:drop-shadow(${shadow})">
+      <div style="
+        width:${sz}px;height:${sz}px;
+        border-radius:50% 50% 50% 0;
+        transform:rotate(-45deg);
+        background:${opts.bg};
+        border:2.5px solid rgba(255,255,255,0.9);
+        box-shadow:${glow} inset 0 -2px 4px rgba(0,0,0,0.15), inset 0 2px 4px rgba(255,255,255,0.3);
+        display:flex;align-items:center;justify-content:center;
+      ">
+        <span style="transform:rotate(45deg);color:#fff;font-size:${fs}px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.2)">${label}</span>
+      </div>
+    </div>`,
+    iconSize: [sz, sz + 8],
+    iconAnchor: [sz / 2, sz + 8],
+  })
+}
+
+function homeIcon(): L.DivIcon {
+  return pinIcon('🏠', {
+    bg: 'linear-gradient(135deg, #faad14, #ffc53d)',
+    size: 32, fontSize: 14,
+    shadow: '0 3px 10px rgba(250,173,20,0.4)',
+  })
+}
+
+function spotPin(index: number, highlighted: boolean): L.DivIcon {
+  return pinIcon(String(index + 1), {
+    bg: highlighted ? T.gradient : `linear-gradient(135deg, ${T.primary}bb, ${T.primary}88)`,
+    size: highlighted ? 32 : 24,
+    fontSize: highlighted ? 12 : 10,
+    shadow: highlighted ? `0 3px 12px ${T.shadow}` : '0 2px 6px rgba(0,0,0,0.2)',
+    glow: highlighted,
+  })
+}
+
+function dimDot(): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:10px;height:10px;border-radius:50%;background:${T.primary}40;border:1.5px solid rgba(255,255,255,0.5);box-shadow:0 1px 3px rgba(0,0,0,0.1)"></div>`,
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
+  })
+}
+
 // --------------- Bezier helpers ---------------
 
 function quadBezier(t: number, p0: number, p1: number, p2: number): number {
@@ -38,20 +96,16 @@ function quadBezier(t: number, p0: number, p1: number, p2: number): number {
 }
 
 function bezierControl(
-  from: [number, number],
-  to: [number, number],
-  transport?: TransportType,
+  from: [number, number], to: [number, number], transport?: TransportType,
 ): [number, number] {
   const [lat1, lng1] = from
   const [lat2, lng2] = to
   const midLat = (lat1 + lat2) / 2
   const midLng = (lng1 + lng2) / 2
-
   const dx = lng2 - lng1
   const dy = lat2 - lat1
   const len = Math.sqrt(dx * dx + dy * dy)
   if (len < 0.001) return [midLat, midLng]
-
   let factor: number
   switch (transport) {
     case 'plane': factor = 0.3; break
@@ -60,12 +114,8 @@ function bezierControl(
     case 'car': case 'bus': factor = 0.12; break
     default: factor = 0.08; break
   }
-
   const offset = len * factor
-  const perpLat = (-dx / len) * offset
-  const perpLng = (dy / len) * offset
-
-  return [midLat + perpLat, midLng + perpLng]
+  return [midLat + (-dx / len) * offset, midLng + (dy / len) * offset]
 }
 
 // --------------- Map helpers ---------------
@@ -73,13 +123,77 @@ function bezierControl(
 function BoundsFitter({ coords }: { coords: [number, number][] }) {
   const map = useMap()
   useEffect(() => {
-    if (coords.length > 1) {
-      map.fitBounds(L.latLngBounds(coords).pad(0.15))
-    } else if (coords.length === 1) {
-      map.setView(coords[0]!, 12)
-    }
+    if (coords.length > 1) map.fitBounds(L.latLngBounds(coords).pad(0.15))
+    else if (coords.length === 1) map.setView(coords[0]!, 12)
     setTimeout(() => map.invalidateSize(), 100)
   }, [map, coords])
+  return null
+}
+
+// --------------- Static Markers (imperative) ---------------
+
+function StaticMarkers({ markers, highlightTripId, tripMap, provider, onMarkerClick, onTripClick }: {
+  markers: MarkerData[]
+  highlightTripId: number | null | undefined
+  tripMap: Map<number, Trip>
+  provider: string
+  onMarkerClick: (m: MarkerData) => void
+  onTripClick?: (tripId: number) => void
+}) {
+  const map = useMap()
+  const layersRef = useRef<L.Layer[]>([])
+
+  useEffect(() => {
+    // Cleanup previous
+    layersRef.current.forEach(l => map.removeLayer(l))
+    layersRef.current = []
+
+    // Departure for highlighted trip
+    if (highlightTripId != null) {
+      const trip = tripMap.get(highlightTripId)
+      if (trip?.departureLat != null && trip?.departureLng != null) {
+        const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider as 'osm' | 'amap')
+        const m = L.marker([dLat, dLng], { icon: homeIcon(), zIndexOffset: 500 })
+          .addTo(map)
+          .bindPopup(`<b>${trip.departureName || '出发地'}</b>`)
+        layersRef.current.push(m)
+      }
+    }
+
+    // Spot markers
+    let spotIdx = 0
+    for (const mk of markers) {
+      const isHighlighted = highlightTripId == null || mk.tripId === highlightTripId
+      let icon: L.DivIcon
+      if (mk.isDeparture) {
+        if (highlightTripId != null && mk.tripId === highlightTripId) continue // handled above
+        icon = homeIcon()
+      } else if (isHighlighted) {
+        icon = spotPin(spotIdx, highlightTripId != null)
+        spotIdx++
+      } else {
+        icon = dimDot()
+      }
+
+      const m = L.marker([mk.lat, mk.lng], {
+        icon,
+        zIndexOffset: isHighlighted ? 400 : 100,
+      }).addTo(map)
+
+      m.bindPopup(`<b>${mk.name}</b><br/>${mk.tripName}<br/>${mk.date}`)
+      m.on('click', () => {
+        onMarkerClick(mk)
+        onTripClick?.(mk.tripId)
+      })
+      layersRef.current.push(m)
+    }
+
+    return () => {
+      layersRef.current.forEach(l => map.removeLayer(l))
+      layersRef.current = []
+    }
+  }, [markers, highlightTripId, tripMap, provider, map, onMarkerClick, onTripClick])
+
   return null
 }
 
@@ -95,9 +209,7 @@ function FootprintAnimator({ markers, playing, onDone }: {
   onDoneRef.current = onDone
   const ref = useRef({
     layers: [] as L.Layer[],
-    idx: 0,
-    step: 0,
-    totalSteps: 0,
+    idx: 0, step: 0, totalSteps: 0,
     fromLat: 0, fromLng: 0,
     ctrlLat: 0, ctrlLng: 0,
     toLat: 0, toLng: 0,
@@ -112,15 +224,10 @@ function FootprintAnimator({ markers, playing, onDone }: {
     const s = ref.current
     if (s.rafId != null) cancelAnimationFrame(s.rafId)
     if (s.timerId != null) clearTimeout(s.timerId)
-    s.rafId = null
-    s.timerId = null
-    s.layers.forEach((l) => map.removeLayer(l))
-    s.layers = []
-    s.idx = 0
-    s.step = 0
-    s.started = false
-    s.currentLine = null
-    s.currentMover = null
+    s.rafId = null; s.timerId = null
+    s.layers.forEach(l => map.removeLayer(l))
+    s.layers = []; s.idx = 0; s.step = 0; s.started = false
+    s.currentLine = null; s.currentMover = null
   }, [map])
 
   useEffect(() => {
@@ -130,39 +237,21 @@ function FootprintAnimator({ markers, playing, onDone }: {
       if (s.timerId != null) { clearTimeout(s.timerId); s.timerId = null }
       return
     }
+    if (!s.started) { cleanup(); s.started = true; showFirst() }
+    else if (s.step > 0 && s.step < s.totalSteps) tick()
+    else processNext()
 
-    if (!s.started) {
-      cleanup()
-      s.started = true
-      showFirstMarker()
-    } else {
-      if (s.step > 0 && s.step < s.totalSteps) {
-        tick()
-      } else {
-        processNext()
-      }
-    }
-
-    function showFirstMarker() {
+    function showFirst() {
       if (markers.length === 0) { onDoneRef.current(); return }
       const m = markers[0]!
       const pos = L.latLng(m.lat, m.lng)
-
       map.flyTo(pos, Math.max(map.getZoom(), 10), { duration: 0.8 })
-
       s.timerId = setTimeout(() => {
         addPulse(pos)
-        const cm = addCircleMarker(m, pos)
+        const cm = addArrivalMarker(m, pos)
         cm.openPopup()
-
-        s.fromLat = m.lat
-        s.fromLng = m.lng
-        s.idx = 1
-
-        s.timerId = setTimeout(() => {
-          cm.closePopup()
-          processNext()
-        }, 1500)
+        s.fromLat = m.lat; s.fromLng = m.lng; s.idx = 1
+        s.timerId = setTimeout(() => { cm.closePopup(); processNext() }, 1500)
       }, 900)
     }
 
@@ -170,65 +259,46 @@ function FootprintAnimator({ markers, playing, onDone }: {
       const s = ref.current
       if (s.idx >= markers.length) {
         if (markers.length > 1) {
-          const allCoords = markers.map(m => L.latLng(m.lat, m.lng))
-          map.flyToBounds(L.latLngBounds(allCoords).pad(0.15), { duration: 1.2 })
+          map.flyToBounds(L.latLngBounds(markers.map(m => L.latLng(m.lat, m.lng))).pad(0.15), { duration: 1.2 })
         }
         s.timerId = setTimeout(() => onDoneRef.current(), 1400)
         return
       }
-
       const m = markers[s.idx]!
       const prev = markers[s.idx - 1]
-      const sameTripAsPrev = prev != null && m.tripId === prev.tripId
-
-      if (!sameTripAsPrev) {
+      if (!prev || m.tripId !== prev.tripId) {
         const to = L.latLng(m.lat, m.lng)
         map.flyTo(to, Math.max(10, Math.min(map.getZoom(), 12)), { duration: 1.2 })
         s.timerId = setTimeout(() => {
           addPulse(to)
-          const cm = addCircleMarker(m, to)
+          const cm = addArrivalMarker(m, to)
           cm.openPopup()
-
-          s.fromLat = m.lat
-          s.fromLng = m.lng
-          s.idx++
-
-          s.timerId = setTimeout(() => {
-            cm.closePopup()
-            processNext()
-          }, 2000)
+          s.fromLat = m.lat; s.fromLng = m.lng; s.idx++
+          s.timerId = setTimeout(() => { cm.closePopup(); processNext() }, 2000)
         }, 1300)
       } else {
-        const from = L.latLng(s.fromLat, s.fromLng)
-        const to = L.latLng(m.lat, m.lng)
-        animateSegment(from, to, m)
+        animateSegment(L.latLng(s.fromLat, s.fromLng), L.latLng(m.lat, m.lng), m)
       }
     }
 
     function animateSegment(from: L.LatLng, to: L.LatLng, m: MarkerData) {
       const s = ref.current
       const dist = from.distanceTo(to)
-
       s.totalSteps = Math.max(80, Math.min(300, Math.round(dist / 1500)))
-
       const ctrl = bezierControl([from.lat, from.lng], [to.lat, to.lng], m.transport)
       s.fromLat = from.lat; s.fromLng = from.lng
       s.ctrlLat = ctrl[0]; s.ctrlLng = ctrl[1]
-      s.toLat = to.lat; s.toLng = to.lng
-      s.step = 0
-
+      s.toLat = to.lat; s.toLng = to.lng; s.step = 0
       const emoji = getTransportEmoji(m.transport)
       const icon = L.divIcon({
         className: '',
-        html: `<span style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))">${emoji}</span>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        html: `<span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))">${emoji}</span>`,
+        iconSize: [28, 28], iconAnchor: [14, 14],
       })
       s.currentMover = L.marker(from, { icon, zIndexOffset: 1000 }).addTo(map)
       s.layers.push(s.currentMover)
       s.currentLine = L.polyline([from], { color: T.primary, weight: 3, opacity: 0.8 }).addTo(map)
       s.layers.push(s.currentLine)
-
       tick()
     }
 
@@ -239,71 +309,49 @@ function FootprintAnimator({ markers, playing, onDone }: {
       const lat = quadBezier(t, s.fromLat, s.ctrlLat, s.toLat)
       const lng = quadBezier(t, s.fromLng, s.ctrlLng, s.toLng)
       const pos = L.latLng(lat, lng)
-
       s.currentLine!.addLatLng(pos)
       s.currentMover!.setLatLng(pos)
-
       map.panTo(pos, { animate: false })
-
-      if (s.step < s.totalSteps) {
-        s.rafId = requestAnimationFrame(tick)
-      } else {
-        arriveAt(markers[s.idx]!)
-      }
+      if (s.step < s.totalSteps) s.rafId = requestAnimationFrame(tick)
+      else arriveAt(markers[s.idx]!)
     }
 
     function arriveAt(m: MarkerData) {
       const s = ref.current
-
       if (s.currentMover) {
         map.removeLayer(s.currentMover)
         const mi = s.layers.indexOf(s.currentMover)
         if (mi >= 0) s.layers.splice(mi, 1)
         s.currentMover = null
       }
-
       const endPos = L.latLng(m.lat, m.lng)
-
       addPulse(endPos)
-
-      const cm = addCircleMarker(m, endPos)
+      const cm = addArrivalMarker(m, endPos)
       cm.openPopup()
-
-      s.fromLat = m.lat
-      s.fromLng = m.lng
-      s.idx++
-      s.step = 0
-
-      const nextM: MarkerData | undefined = markers[s.idx]
-      const isTripChange = nextM != null && nextM.tripId !== m.tripId
-      const isLast = !nextM
-      const delay = isLast ? 2000 : isTripChange ? 2000 : 1200
-
-      s.timerId = setTimeout(() => {
-        cm.closePopup()
-        processNext()
-      }, delay)
+      s.fromLat = m.lat; s.fromLng = m.lng; s.idx++; s.step = 0
+      const nextM = markers[s.idx]
+      const delay = !nextM ? 2000 : nextM.tripId !== m.tripId ? 2000 : 1200
+      s.timerId = setTimeout(() => { cm.closePopup(); processNext() }, delay)
     }
 
     function addPulse(pos: L.LatLng) {
-      const pulseIcon = L.divIcon({
+      const icon = L.divIcon({
         className: '',
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:${T.primary};opacity:0.7;animation:fpPulse 0.8s ease-out"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        html: `<div style="width:16px;height:16px;border-radius:50%;background:${T.primary};opacity:0.7;animation:fpPulse 0.8s ease-out;box-shadow:0 0 8px ${T.primary}80"></div>`,
+        iconSize: [16, 16], iconAnchor: [8, 8],
       })
-      const pulse = L.marker(pos, { icon: pulseIcon, zIndexOffset: 900 }).addTo(map)
-      ref.current.layers.push(pulse)
+      const p = L.marker(pos, { icon, zIndexOffset: 900 }).addTo(map)
+      ref.current.layers.push(p)
       setTimeout(() => {
-        map.removeLayer(pulse)
-        const pi = ref.current.layers.indexOf(pulse)
-        if (pi >= 0) ref.current.layers.splice(pi, 1)
+        map.removeLayer(p)
+        const i = ref.current.layers.indexOf(p)
+        if (i >= 0) ref.current.layers.splice(i, 1)
       }, 800)
     }
 
-    function addCircleMarker(m: MarkerData, pos: L.LatLng): L.CircleMarker {
+    function addArrivalMarker(m: MarkerData, pos: L.LatLng): L.CircleMarker {
       const cm = L.circleMarker(pos, {
-        radius: 7, color: T.primary, fillColor: T.primary, fillOpacity: 0.8,
+        radius: 7, color: T.primary, fillColor: T.primary, fillOpacity: 0.85, weight: 2,
       }).addTo(map).bindPopup(`<b>${m.name}</b><br/>${m.tripName}<br/>${m.date}`)
       ref.current.layers.push(cm)
       return cm
@@ -320,88 +368,80 @@ function FootprintAnimator({ markers, playing, onDone }: {
   return null
 }
 
-// --------------- Glass style ---------------
-
-const glassStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.92)',
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
-  borderRadius: 14,
-  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-  border: '1px solid rgba(0,0,0,0.06)',
-  padding: '6px 14px',
-}
-
-// --------------- Floating Spot Card ---------------
+// --------------- Floating Spot Card (Glass) ---------------
 
 function SpotCard({ marker, onClose, onClick }: {
-  marker: MarkerData
-  onClose: () => void
-  onClick: () => void
+  marker: MarkerData; onClose: () => void; onClick: () => void
 }) {
   return (
     <div
       style={{
-        position: 'absolute',
-        bottom: 16,
-        left: '50%',
+        position: 'absolute', bottom: 20, left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 1000,
-        width: 'min(380px, calc(100% - 32px))',
-        background: '#fff',
-        borderRadius: 16,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08)',
+        width: 'min(400px, calc(100% - 32px))',
+        ...T.glass,
+        background: 'rgba(255,255,255,0.88)',
+        borderRadius: 20,
+        boxShadow: '0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
         overflow: 'hidden',
         cursor: 'pointer',
-        animation: 'spotCardSlideUp 0.3s ease',
+        animation: 'spotCardSlideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
       }}
       onClick={onClick}
     >
-      <div style={{ display: 'flex', gap: 0 }}>
-        {/* Photo */}
+      <div style={{ display: 'flex' }}>
+        {/* Photo side */}
         {marker.photo ? (
-          <div style={{ width: 120, minHeight: 90, flexShrink: 0 }}>
-            <img
-              src={marker.photo}
-              alt=""
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
+          <div style={{ width: 130, minHeight: 100, flexShrink: 0, position: 'relative' }}>
+            <img src={marker.photo} alt="" style={{
+              width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+            }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(90deg, transparent 60%, rgba(255,255,255,0.15))',
+            }} />
           </div>
         ) : (
           <div style={{
-            width: 90, minHeight: 90, flexShrink: 0,
+            width: 100, minHeight: 100, flexShrink: 0,
             background: T.gradientLight,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <span style={{ fontSize: 28, opacity: 0.5 }}>📍</span>
+            <span style={{ fontSize: 32, opacity: 0.4 }}>📍</span>
           </div>
         )}
 
         {/* Info */}
-        <div style={{ flex: 1, padding: '12px 14px', minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div style={{
+          flex: 1, padding: '14px 16px', minWidth: 0,
+          display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        }}>
           <div style={{
             fontWeight: 700, fontSize: 15, color: '#1a1a1a',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            letterSpacing: '0.01em',
           }}>
             {marker.name}
           </div>
           <div style={{
-            fontSize: 12, color: '#888', marginTop: 4,
+            fontSize: 12, color: '#999', marginTop: 3,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {marker.tripName}
           </div>
-          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
             <span style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 10,
+              fontSize: 11, padding: '3px 10px', borderRadius: 10,
               background: T.primaryBg, color: T.primary, fontWeight: 600,
+              boxShadow: `inset 0 -1px 0 ${T.primary}15`,
             }}>
               {marker.date}
             </span>
             {marker.address && (
               <span style={{
-                fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                background: '#f5f5f5', color: '#999',
+                fontSize: 11, padding: '3px 10px', borderRadius: 10,
+                background: 'rgba(0,0,0,0.04)', color: '#999',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 maxWidth: 140,
               }}>
@@ -414,14 +454,18 @@ function SpotCard({ marker, onClose, onClick }: {
 
       {/* Close button */}
       <div
-        onClick={(e) => { e.stopPropagation(); onClose() }}
+        onClick={e => { e.stopPropagation(); onClose() }}
         style={{
-          position: 'absolute', top: 8, right: 8,
-          width: 24, height: 24, borderRadius: '50%',
-          background: 'rgba(0,0,0,0.35)',
+          position: 'absolute', top: 10, right: 10,
+          width: 26, height: 26, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.25)',
+          backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
+          transition: 'background 0.2s',
         }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.5)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.25)' }}
       >
         <CloseOutlined style={{ color: '#fff', fontSize: 10 }} />
       </div>
@@ -437,13 +481,10 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
   const [selectedMarker, setSelectedMarker] = useState<MarkerData | null>(null)
 
   useEffect(() => {
-    if (highlightTripId != null) {
-      setAnimState('idle')
-      setSelectedMarker(null)
-    }
+    if (highlightTripId != null) { setAnimState('idle'); setSelectedMarker(null) }
   }, [highlightTripId])
 
-  const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t])), [trips])
+  const tripMap = useMemo(() => new Map(trips.map(t => [t.id, t])), [trips])
 
   const markers = useMemo(() => {
     const spotsByTrip = new Map<number, MarkerData[]>()
@@ -455,39 +496,32 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
           lat: s.lat, lng: s.lng, name: s.name,
           tripName: trip?.title ?? '', date: s.date,
           tripId: s.tripId, transport: s.transport,
-          photo: s.photos?.[0],
-          address: s.address,
+          photo: s.photos?.[0], address: s.address,
         })
         spotsByTrip.set(s.tripId, list)
       }
     }
-    for (const list of spotsByTrip.values()) {
-      list.sort((a, b) => a.date.localeCompare(b.date))
-    }
+    for (const list of spotsByTrip.values()) list.sort((a, b) => a.date.localeCompare(b.date))
 
     const sortedTrips = [...trips].sort((a, b) => a.startDate.localeCompare(b.startDate))
     const result: MarkerData[] = []
-
     for (const t of sortedTrips) {
-      const tripSpots = spotsByTrip.get(t.id!)
-      if (tripSpots && tripSpots.length > 0) {
+      const ts = spotsByTrip.get(t.id!)
+      if (ts && ts.length > 0) {
         if (t.departureLat != null && t.departureLng != null) {
           result.push({
             lat: t.departureLat, lng: t.departureLng,
             name: t.departureName ?? '出发地',
             tripName: t.title, date: t.startDate,
-            tripId: t.id!, transport: undefined,
-            isDeparture: true,
-            photo: t.coverPhoto,
+            tripId: t.id!, isDeparture: true, photo: t.coverPhoto,
           })
         }
-        result.push(...tripSpots)
+        result.push(...ts)
       } else if (t.lat != null && t.lng != null) {
         result.push({
           lat: t.lat, lng: t.lng, name: t.destination,
           tripName: t.title, date: t.startDate,
-          tripId: t.id!, transport: undefined,
-          photo: t.coverPhoto,
+          tripId: t.id!, photo: t.coverPhoto,
         })
       }
     }
@@ -495,7 +529,7 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
   }, [trips, spots, tripMap])
 
   const displayMarkers = useMemo(
-    () => markers.map((m) => {
+    () => markers.map(m => {
       const [lat, lng] = toDisplayCoord(m.lat, m.lng, provider)
       return { ...m, lat, lng }
     }),
@@ -503,22 +537,19 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
   )
 
   const displayCoords = useMemo<[number, number][]>(
-    () => displayMarkers.map((m) => [m.lat, m.lng]),
-    [displayMarkers],
+    () => displayMarkers.map(m => [m.lat, m.lng]), [displayMarkers],
   )
 
   const fitCoords = useMemo<[number, number][]>(() => {
     if (highlightTripId != null) {
       const trip = tripMap.get(highlightTripId)
-      const hCoords: [number, number][] = []
+      const hc: [number, number][] = []
       if (trip?.departureLat != null && trip?.departureLng != null) {
         const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
-        hCoords.push([dLat, dLng])
+        hc.push([dLat, dLng])
       }
-      for (const m of displayMarkers) {
-        if (m.tripId === highlightTripId) hCoords.push([m.lat, m.lng])
-      }
-      return hCoords.length > 0 ? hCoords : displayCoords
+      for (const m of displayMarkers) if (m.tripId === highlightTripId) hc.push([m.lat, m.lng])
+      return hc.length > 0 ? hc : displayCoords
     }
     return displayCoords
   }, [highlightTripId, displayMarkers, displayCoords, tripMap, provider])
@@ -526,15 +557,13 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
   const highlightRoute = useMemo<[number, number][]>(() => {
     if (highlightTripId == null) return []
     const trip = tripMap.get(highlightTripId)
-    const points: [number, number][] = []
+    const pts: [number, number][] = []
     if (trip?.departureLat != null && trip?.departureLng != null) {
       const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
-      points.push([dLat, dLng])
+      pts.push([dLat, dLng])
     }
-    for (const m of displayMarkers) {
-      if (m.tripId === highlightTripId) points.push([m.lat, m.lng])
-    }
-    return points
+    for (const m of displayMarkers) if (m.tripId === highlightTripId) pts.push([m.lat, m.lng])
+    return pts
   }, [highlightTripId, displayMarkers, tripMap, provider])
 
   const center: [number, number] = displayCoords.length > 0
@@ -549,108 +578,37 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
     else if (animState === 'paused') setAnimState('playing')
   }
 
-  const showStaticMarkers = animState === 'idle'
+  const showStatic = animState === 'idle'
+  const handleMarkerClick = useCallback((m: MarkerData) => setSelectedMarker(m), [])
 
   return (
     <div style={{ position: 'relative', height, overflow: 'hidden' }}>
       <style>{`
         @keyframes fpPulse{0%{transform:scale(1);opacity:0.7}100%{transform:scale(3);opacity:0}}
-        @keyframes spotCardSlideUp{0%{opacity:0;transform:translateX(-50%) translateY(20px)}100%{opacity:1;transform:translateX(-50%) translateY(0)}}
+        @keyframes spotCardSlideUp{0%{opacity:0;transform:translateX(-50%) translateY(16px)}100%{opacity:1;transform:translateX(-50%) translateY(0)}}
       `}</style>
 
-      <MapContainer
-        key={provider}
-        center={center}
-        zoom={4}
-        style={{ height: '100%', width: '100%' }}
-        zoomControl={true}
-      >
+      <MapContainer key={provider} center={center} zoom={4} style={{ height: '100%', width: '100%' }} zoomControl={true}>
         <MapTiles provider={provider} />
         {fitCoords.length > 0 && <BoundsFitter coords={fitCoords} />}
 
-        {/* Static markers — upgraded pin style */}
-        {showStaticMarkers && displayMarkers.map((m, i) => {
-          const isHighlighted = highlightTripId == null || m.tripId === highlightTripId
-
-          if (isHighlighted && (highlightTripId != null || m.isDeparture)) {
-            // Use custom pin icon for highlighted or departure markers
-            return null // rendered below as L.marker style via CircleMarker override
-          }
-
-          return (
-            <CircleMarker
-              key={i}
-              center={[m.lat, m.lng]}
-              radius={isHighlighted ? 7 : 4}
-              pathOptions={{
-                color: T.primary,
-                fillColor: T.primary,
-                fillOpacity: isHighlighted ? 0.8 : 0.15,
-                opacity: isHighlighted ? 1 : 0.2,
-                weight: isHighlighted ? 2 : 1,
-              }}
-              eventHandlers={{
-                click: () => {
-                  setSelectedMarker(m)
-                  onTripClick?.(m.tripId)
-                },
-              }}
-            >
-              <Popup>
-                <b>{m.name}</b><br />{m.tripName}<br />{m.date}
-              </Popup>
-            </CircleMarker>
-          )
-        })}
-
-        {/* Highlighted trip: custom numbered pins */}
-        {showStaticMarkers && highlightTripId != null && displayMarkers.map((m, i) => {
-          if (m.tripId !== highlightTripId && !m.isDeparture) return null
-          if (m.tripId !== highlightTripId) return null
-
-          return (
-            <CircleMarker
-              key={`hl-${i}`}
-              center={[m.lat, m.lng]}
-              radius={m.isDeparture ? 10 : 8}
-              pathOptions={{
-                color: m.isDeparture ? '#faad14' : T.primary,
-                fillColor: m.isDeparture ? '#faad14' : T.primary,
-                fillOpacity: 0.9,
-                weight: 3,
-              }}
-              eventHandlers={{
-                click: () => setSelectedMarker(m),
-              }}
-            >
-              <Popup>
-                <b>{m.name}</b><br />{m.tripName}<br />{m.date}
-              </Popup>
-            </CircleMarker>
-          )
-        })}
-
-        {/* Departure marker for highlighted trip */}
-        {showStaticMarkers && highlightTripId != null && (() => {
-          const trip = tripMap.get(highlightTripId)
-          if (!trip?.departureLat || !trip?.departureLng) return null
-          const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
-          return (
-            <CircleMarker
-              center={[dLat, dLng]}
-              radius={10}
-              pathOptions={{ color: '#faad14', fillColor: '#faad14', fillOpacity: 0.9, weight: 3 }}
-            >
-              <Popup><b>{trip.departureName || '出发地'}</b></Popup>
-            </CircleMarker>
-          )
-        })()}
+        {/* Static pin markers */}
+        {showStatic && (
+          <StaticMarkers
+            markers={displayMarkers}
+            highlightTripId={highlightTripId}
+            tripMap={tripMap}
+            provider={provider}
+            onMarkerClick={handleMarkerClick}
+            onTripClick={onTripClick}
+          />
+        )}
 
         {/* Route line for highlighted trip */}
-        {showStaticMarkers && highlightRoute.length > 1 && (
+        {showStatic && highlightRoute.length > 1 && (
           <Polyline
             positions={highlightRoute}
-            pathOptions={{ color: T.primary, weight: 3, opacity: 0.6, dashArray: '8,6' }}
+            pathOptions={{ color: T.primary, weight: 3, opacity: 0.5, dashArray: '8,6' }}
           />
         )}
 
@@ -664,7 +622,7 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
         )}
       </MapContainer>
 
-      {/* Play button */}
+      {/* Play button — glass style */}
       {highlightTripId == null && displayMarkers.length > 1 && (
         <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1000 }}>
           <Button
@@ -676,12 +634,14 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
             onClick={handleButtonClick}
             size="small"
             style={{
-              ...glassStyle,
-              background: T.primary,
+              ...T.glassButton,
+              background: T.gradient,
               color: '#fff',
               border: 'none',
               fontWeight: 600,
-              boxShadow: `0 4px 16px ${T.shadow}`,
+              boxShadow: `0 4px 16px ${T.shadow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
+              height: 32,
+              paddingInline: 14,
             }}
           >
             {animState === 'playing' ? '暂停' : animState === 'paused' ? '继续' : animState === 'done' ? '重播' : '播放足迹'}
@@ -689,18 +649,19 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
         </div>
       )}
 
-      {/* Spot count badge */}
+      {/* Spot count — glass badge */}
       {spotCount != null && !selectedMarker && (
         <div style={{
-          position: 'absolute', bottom: 12, right: 12, zIndex: 1000,
-          ...glassStyle, fontSize: 12, color: T.text,
+          position: 'absolute', bottom: 14, right: 14, zIndex: 1000,
+          ...T.glassButton,
+          fontSize: 12, color: T.text, padding: '5px 14px',
         }}>
           共 {spotCount} 个坐标点
         </div>
       )}
 
       {/* Floating spot card */}
-      {selectedMarker && showStaticMarkers && (
+      {selectedMarker && showStatic && (
         <SpotCard
           marker={selectedMarker}
           onClose={() => setSelectedMarker(null)}
