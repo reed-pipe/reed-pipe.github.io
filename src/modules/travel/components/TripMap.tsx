@@ -25,6 +25,16 @@ function BoundsFitter({ coords }: { coords: [number, number][] }) {
   return null
 }
 
+function ZoomBottomRight() {
+  const map = useMap()
+  useEffect(() => {
+    const ctrl = L.control.zoom({ position: 'bottomright' })
+    ctrl.addTo(map)
+    return () => { ctrl.remove() }
+  }, [map])
+  return null
+}
+
 // --------------- Bezier fallback ---------------
 
 function bezierPositions(
@@ -302,9 +312,10 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
         center={center}
         zoom={12}
         style={{ height, width: '100%', borderRadius: 12 }}
-        zoomControl={true}
+        zoomControl={false}
       >
         <MapTiles />
+        <ZoomBottomRight />
         <BoundsFitter coords={displayCoords} />
 
         {/* Pin markers */}

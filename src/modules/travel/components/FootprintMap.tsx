@@ -129,6 +129,17 @@ function bezierPositions(
 
 // --------------- Map helpers ---------------
 
+/** Place zoom control at bottom-right to avoid overlapping the side panel */
+function ZoomControl() {
+  const map = useMap()
+  useEffect(() => {
+    const ctrl = L.control.zoom({ position: 'bottomright' })
+    ctrl.addTo(map)
+    return () => { ctrl.remove() }
+  }, [map])
+  return null
+}
+
 function BoundsFitter({ coords }: { coords: [number, number][] }) {
   const map = useMap()
   useEffect(() => {
@@ -662,7 +673,8 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
         @keyframes spotCardSlideUp{0%{opacity:0;transform:translateX(-50%) translateY(16px)}100%{opacity:1;transform:translateX(-50%) translateY(0)}}
       `}</style>
 
-      <MapContainer center={center} zoom={4} style={{ height: '100%', width: '100%' }} zoomControl={true}>
+      <MapContainer center={center} zoom={4} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+        <ZoomControl />
         <MapTiles />
         {fitCoords.length > 0 && <BoundsFitter coords={fitCoords} />}
 
