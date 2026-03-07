@@ -378,30 +378,26 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
       const targetFrames = Math.max(80, Math.min(240, positions.length))
       s.stepsPerFrame = Math.max(1, positions.length / targetFrames)
 
-      // Fly to fit the segment bounds before animating
+      // Instantly fit the segment bounds — no animation, no jitter
       const segBounds = L.latLngBounds(positions.map(p => L.latLng(p[0], p[1])))
-      map.flyToBounds(segBounds.pad(0.35), { duration: 0.8, maxZoom: 15 })
+      map.fitBounds(segBounds, { padding: [50, 50], maxZoom: 17, animate: false })
 
-      // Wait for flyToBounds to finish, then start drawing
-      s.timerId = setTimeout(() => {
-        if (!s.started) return
-        // Create mover and line
-        const emoji = getTransportEmoji(m.transport)
-        const icon = L.divIcon({
-          className: '',
-          html: `<span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))">${emoji}</span>`,
-          iconSize: [28, 28], iconAnchor: [14, 14],
-        })
-        const startPos = positions[0]!
-        s.currentMover = L.marker([startPos[0], startPos[1]], { icon, zIndexOffset: 1000 }).addTo(map)
-        s.layers.push(s.currentMover)
-        s.currentLine = L.polyline([[startPos[0], startPos[1]]], {
-          color: T.primary, weight: 3.5, opacity: 0.85,
-        }).addTo(map)
-        s.layers.push(s.currentLine)
+      // Create mover and line, start drawing
+      const emoji = getTransportEmoji(m.transport)
+      const icon = L.divIcon({
+        className: '',
+        html: `<span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))">${emoji}</span>`,
+        iconSize: [28, 28], iconAnchor: [14, 14],
+      })
+      const startPos = positions[0]!
+      s.currentMover = L.marker([startPos[0], startPos[1]], { icon, zIndexOffset: 1000 }).addTo(map)
+      s.layers.push(s.currentMover)
+      s.currentLine = L.polyline([[startPos[0], startPos[1]]], {
+        color: T.primary, weight: 3.5, opacity: 0.85,
+      }).addTo(map)
+      s.layers.push(s.currentLine)
 
-        tick()
-      }, 900)
+      tick()
     }
 
     /** Animate: advance through positions array */
