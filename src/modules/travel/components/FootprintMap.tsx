@@ -312,6 +312,7 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
     function processNext() {
       const s = ref.current
       if (s.idx >= markers.length) {
+        // All done — zoom out to show full footprint
         if (markers.length > 1) {
           map.flyToBounds(L.latLngBounds(markers.map(m => L.latLng(m.lat, m.lng))).pad(0.15), { duration: 1.2 })
         }
@@ -321,9 +322,9 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
       const m = markers[s.idx]!
       const prev = markers[s.idx - 1]
       if (!prev || m.tripId !== prev.tripId) {
-        // Different trip — fly to new location
+        // Different trip — fly to new location with appropriate zoom
         const to = L.latLng(m.lat, m.lng)
-        map.flyTo(to, Math.max(10, Math.min(map.getZoom(), 12)), { duration: 1.2 })
+        map.flyTo(to, 12, { duration: 1.2 })
         s.timerId = setTimeout(() => {
           addPulse(to)
           const cm = addArrivalMarker(m, to)
@@ -377,22 +378,30 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
       const targetFrames = Math.max(80, Math.min(240, positions.length))
       s.stepsPerFrame = Math.max(1, positions.length / targetFrames)
 
-      // Create mover and line
-      const emoji = getTransportEmoji(m.transport)
-      const icon = L.divIcon({
-        className: '',
-        html: `<span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))">${emoji}</span>`,
-        iconSize: [28, 28], iconAnchor: [14, 14],
-      })
-      const startPos = positions[0]!
-      s.currentMover = L.marker([startPos[0], startPos[1]], { icon, zIndexOffset: 1000 }).addTo(map)
-      s.layers.push(s.currentMover)
-      s.currentLine = L.polyline([[startPos[0], startPos[1]]], {
-        color: T.primary, weight: 3.5, opacity: 0.85,
-      }).addTo(map)
-      s.layers.push(s.currentLine)
+      // Fly to fit the segment bounds before animating
+      const segBounds = L.latLngBounds(positions.map(p => L.latLng(p[0], p[1])))
+      map.flyToBounds(segBounds.pad(0.35), { duration: 0.8, maxZoom: 15 })
 
-      tick()
+      // Wait for flyToBounds to finish, then start drawing
+      s.timerId = setTimeout(() => {
+        if (!s.started) return
+        // Create mover and line
+        const emoji = getTransportEmoji(m.transport)
+        const icon = L.divIcon({
+          className: '',
+          html: `<span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))">${emoji}</span>`,
+          iconSize: [28, 28], iconAnchor: [14, 14],
+        })
+        const startPos = positions[0]!
+        s.currentMover = L.marker([startPos[0], startPos[1]], { icon, zIndexOffset: 1000 }).addTo(map)
+        s.layers.push(s.currentMover)
+        s.currentLine = L.polyline([[startPos[0], startPos[1]]], {
+          color: T.primary, weight: 3.5, opacity: 0.85,
+        }).addTo(map)
+        s.layers.push(s.currentLine)
+
+        tick()
+      }, 900)
     }
 
     /** Animate: advance through positions array */
@@ -411,7 +420,6 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
       }
 
       s.currentMover!.setLatLng(latLng)
-      map.panTo(latLng, { animate: false })
 
       if (idx < s.positions.length - 1) {
         s.rafId = requestAnimationFrame(tick)

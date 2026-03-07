@@ -147,7 +147,15 @@ function RouteAnimator({ segmentRoutes, playing, onDone }: {
 
     function startSegment() {
       const s = ref.current
-      if (s.segIdx >= segmentRoutes.length) { onDoneRef.current(); return }
+      if (s.segIdx >= segmentRoutes.length) {
+        // Done: zoom out to show full route
+        const allPos = segmentRoutes.flatMap(r => r)
+        if (allPos.length > 1) {
+          map.flyToBounds(L.latLngBounds(allPos.map(p => L.latLng(p[0], p[1]))).pad(0.15), { duration: 1 })
+        }
+        setTimeout(() => onDoneRef.current(), 1100)
+        return
+      }
 
       const positions = segmentRoutes[s.segIdx]!
       s.positions = positions
@@ -155,17 +163,25 @@ function RouteAnimator({ segmentRoutes, playing, onDone }: {
       const targetFrames = Math.max(40, Math.min(150, positions.length))
       s.stepsPerFrame = Math.max(1, positions.length / targetFrames)
 
-      const icon = L.divIcon({
-        className: '',
-        html: `<span style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))">🚗</span>`,
-        iconSize: [28, 28], iconAnchor: [14, 14],
-      })
-      const start = positions[0]!
-      s.currentMover = L.marker([start[0], start[1]], { icon, zIndexOffset: 1000 }).addTo(map)
-      s.layers.push(s.currentMover)
-      s.currentLine = L.polyline([[start[0], start[1]]], { color: T.primary, weight: 3.5, opacity: 0.9 }).addTo(map)
-      s.layers.push(s.currentLine)
-      tick()
+      // Fly to fit this segment before animating
+      const segBounds = L.latLngBounds(positions.map(p => L.latLng(p[0], p[1])))
+      map.flyToBounds(segBounds.pad(0.35), { duration: 0.8, maxZoom: 15 })
+
+      setTimeout(() => {
+        const s = ref.current
+        if (!playing) return
+        const icon = L.divIcon({
+          className: '',
+          html: `<span style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))">🚗</span>`,
+          iconSize: [28, 28], iconAnchor: [14, 14],
+        })
+        const start = positions[0]!
+        s.currentMover = L.marker([start[0], start[1]], { icon, zIndexOffset: 1000 }).addTo(map)
+        s.layers.push(s.currentMover)
+        s.currentLine = L.polyline([[start[0], start[1]]], { color: T.primary, weight: 3.5, opacity: 0.9 }).addTo(map)
+        s.layers.push(s.currentLine)
+        tick()
+      }, 900)
     }
 
     function tick() {
