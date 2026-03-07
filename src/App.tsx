@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useRoutes } from 'react-router-dom'
 import { ConfigProvider, Spin } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
+import { antThemeToken } from './shared/theme'
 import { routes } from './router'
 import AppLayout from './shared/components/AppLayout'
 import LoginPage from './shared/auth/LoginPage'
@@ -66,7 +67,7 @@ export default function App() {
 
   if (!initialized) {
     return (
-      <ConfigProvider locale={zhCN}>
+      <ConfigProvider locale={zhCN} theme={{ token: antThemeToken }}>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
           <Spin size="large" />
         </div>
@@ -75,7 +76,7 @@ export default function App() {
   }
 
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={zhCN} theme={{ token: antThemeToken }}>
       {username ? <AuthenticatedApp /> : <LoginPage />}
     </ConfigProvider>
   )

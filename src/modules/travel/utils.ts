@@ -1,61 +1,31 @@
 import type { Trip, TripSpot, TransportType, CostCategory } from '@/shared/db'
+import { colors, gradients, shadows, glass } from '@/shared/theme'
 
-// Travel module design tokens
+// Travel module design tokens — extends global theme
 export const T = {
-  // Color palette
-  primary: '#F5722D',
-  primaryHover: '#FF8C4A',
-  primaryBg: '#FFF7E6',
-  primaryLight: '#FFD8BF',
-  primaryDark: '#D4500A',
+  // Re-export frequently used tokens
+  primary: colors.primary,
+  primaryHover: colors.primaryHover,
+  primaryBg: colors.primaryBg,
+  primaryLight: colors.primaryLight,
+  primaryDark: colors.primaryDark,
   text: '#8C4A1E',
   textLight: '#B87333',
 
-  // Gradients
-  gradient: 'linear-gradient(135deg, #F5722D, #FF9A5C)',
-  gradientLight: 'linear-gradient(135deg, #FFF7E6, #FFE8D5)',
-  gradientSubtle: 'linear-gradient(135deg, rgba(245,114,45,0.06), rgba(245,114,45,0.12))',
+  gradient: gradients.primary,
+  gradientLight: gradients.primaryLight,
+  gradientSubtle: gradients.primarySubtle,
 
-  // Route line color (contrasts with map tiles)
-  route: '#2563EB',
+  route: colors.accent,
   routeLight: 'rgba(37, 99, 235, 0.5)',
 
-  // Shadows
-  shadow: 'rgba(245, 114, 45, 0.25)',
+  shadow: shadows.primary.match(/rgba[^)]+\)/)?.[0] ?? 'rgba(245, 114, 45, 0.25)',
   shadowLight: 'rgba(245, 114, 45, 0.12)',
 
-  // Glassmorphism presets
-  glass: {
-    background: 'rgba(255,255,255,0.72)',
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    border: '1px solid rgba(255,255,255,0.45)',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)',
-  } as React.CSSProperties,
-
-  glassCard: {
-    background: 'rgba(255,255,255,0.82)',
-    backdropFilter: 'blur(12px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(12px) saturate(160%)',
-    border: '1px solid rgba(255,255,255,0.5)',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.8)',
-    borderRadius: 16,
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-  } as React.CSSProperties,
-
-  glassCardHover: {
-    boxShadow: `0 8px 28px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(245,114,45,0.15), inset 0 1px 0 rgba(255,255,255,0.9)`,
-    transform: 'translateY(-2px)',
-  } as React.CSSProperties,
-
-  glassButton: {
-    background: 'rgba(255,255,255,0.85)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255,255,255,0.5)',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
-    borderRadius: 12,
-  } as React.CSSProperties,
+  glass: glass.panel,
+  glassCard: glass.card,
+  glassCardHover: glass.cardHover,
+  glassButton: glass.button,
 }
 
 /** 花费分类 */

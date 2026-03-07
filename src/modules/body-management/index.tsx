@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Button, Segmented, Space, Tabs } from 'antd'
+import { Button, Segmented, Space, Tabs, Typography } from 'antd'
 import { SettingOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import dayjs from 'dayjs'
@@ -14,6 +14,9 @@ import GoalSetting from './components/GoalSetting'
 import MeasurementForm from './components/MeasurementForm'
 import MeasurementChart from './components/MeasurementChart'
 import CalendarHeatmap from './components/CalendarHeatmap'
+import { colors, shadows } from '@/shared/theme'
+
+const { Text } = Typography
 
 type PeriodFilter = 'all' | 'morning' | 'evening'
 type RangeFilter = 7 | 30 | 90 | 0
@@ -47,26 +50,20 @@ export default function BodyManagement() {
   const notifyChanged = useDataChanged()
 
   useEffect(() => {
-    if (!loaded) {
-      void load(db)
-    }
+    if (!loaded) void load(db)
   }, [loaded, load, db])
 
   const records = useLiveQuery(() =>
-    db.weightRecords.orderBy('createdAt').toArray(),
-    [db],
+    db.weightRecords.orderBy('createdAt').toArray(), [db],
   ) ?? []
 
   const measurements = useLiveQuery(() =>
-    db.bodyMeasurements.orderBy('createdAt').toArray(),
-    [db],
+    db.bodyMeasurements.orderBy('createdAt').toArray(), [db],
   ) ?? []
 
   const filteredRecords = useMemo(() => {
     let result = records
-    if (periodFilter !== 'all') {
-      result = result.filter((r) => r.period === periodFilter)
-    }
+    if (periodFilter !== 'all') result = result.filter((r) => r.period === periodFilter)
     if (rangeFilter > 0) {
       const cutoff = dayjs().subtract(rangeFilter, 'day').format('YYYY-MM-DD')
       result = result.filter((r) => r.date >= cutoff)
@@ -83,17 +80,39 @@ export default function BodyManagement() {
   }, [measurements, rangeFilter])
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <WeightForm onDataChanged={notifyChanged} />
+    <div className="fade-in-up" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Record form card */}
+      <div style={{
+        padding: 18,
+        borderRadius: 16,
+        background: '#fff',
+        border: `1px solid ${colors.borderLight}`,
+        boxShadow: shadows.card,
+      }}>
+        <WeightForm onDataChanged={notifyChanged} />
+      </div>
 
+      {/* Section header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 500, fontSize: 15 }}>数据概览</span>
-        <Button type="text" icon={<SettingOutlined />} onClick={() => setSettingOpen(true)}>
+        <Text strong style={{ fontSize: 16 }}>数据概览</Text>
+        <Button
+          type="text"
+          icon={<SettingOutlined />}
+          onClick={() => setSettingOpen(true)}
+          style={{ borderRadius: 10 }}
+        >
           设置
         </Button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {/* Filters */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap',
+        padding: '10px 14px',
+        borderRadius: 12,
+        background: colors.bg,
+        border: `1px solid ${colors.borderLight}`,
+      }}>
         <Segmented
           size="small"
           options={periodFilterOptions}
@@ -153,6 +172,6 @@ export default function BodyManagement() {
       />
 
       <GoalSetting open={settingOpen} onClose={() => setSettingOpen(false)} onDataChanged={notifyChanged} />
-    </Space>
+    </div>
   )
 }

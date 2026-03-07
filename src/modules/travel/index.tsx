@@ -9,6 +9,7 @@ import type { Trip } from '@/shared/db'
 import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
+import { colors, gradients, shadows } from '@/shared/theme'
 import {
   exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange,
   sortTrips, getTripStatusLabel, T,
@@ -91,7 +92,7 @@ export default function Travel() {
   }
 
   const panelHeader = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
       <Space size={4}>
         {trips.length > 0 && (
           <Button icon={<DownloadOutlined />} size="small" onClick={handleExport} type="text"
@@ -103,12 +104,12 @@ export default function Travel() {
           size="small"
           onClick={() => { setEditingTrip(null); setFormOpen(true) }}
           style={{
-            background: T.gradient,
+            background: gradients.primary,
             color: '#fff',
             border: 'none',
             borderRadius: 10,
             fontWeight: 600,
-            boxShadow: `0 3px 12px ${T.shadow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
+            boxShadow: shadows.primary,
             height: 30,
           }}
         >
@@ -136,23 +137,30 @@ export default function Travel() {
       <>
         {/* Stats bar */}
         {trips.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${stats.totalCost > 0 ? 5 : 4}, 1fr)`,
+            gap: 6,
+            marginBottom: 14,
+          }}>
             {[
-              { label: '旅行', value: `${stats.totalTrips}次` },
-              { label: '目的地', value: `${stats.destinations}个` },
-              { label: '天数', value: `${stats.totalDays}天` },
-              { label: '打卡', value: `${stats.totalSpots}个` },
-              ...(stats.totalCost > 0 ? [{ label: '花费', value: formatCost(stats.totalCost) }] : []),
+              { label: '旅行', value: `${stats.totalTrips}`, unit: '次' },
+              { label: '目的地', value: `${stats.destinations}`, unit: '个' },
+              { label: '天数', value: `${stats.totalDays}`, unit: '天' },
+              { label: '打卡', value: `${stats.totalSpots}`, unit: '' },
+              ...(stats.totalCost > 0 ? [{ label: '花费', value: formatCost(stats.totalCost), unit: '' }] : []),
             ].map(s => (
               <div key={s.label} style={{
-                padding: '5px 12px', borderRadius: 20,
-                background: 'rgba(245,114,45,0.06)',
-                border: '1px solid rgba(245,114,45,0.08)',
-                fontSize: 12, lineHeight: '18px',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+                padding: '8px 6px',
+                borderRadius: 12,
+                background: colors.bg,
+                border: `1px solid ${colors.borderLight}`,
+                textAlign: 'center',
               }}>
-                <span style={{ color: '#aaa' }}>{s.label}</span>{' '}
-                <span style={{ fontWeight: 700, color: T.primary }}>{s.value}</span>
+                <div style={{ fontSize: 16, fontWeight: 800, color: colors.primary, lineHeight: 1.2, letterSpacing: '-0.02em' }}>
+                  {s.value}{s.unit && <span style={{ fontSize: 10, fontWeight: 500 }}>{s.unit}</span>}
+                </div>
+                <div style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -198,27 +206,22 @@ export default function Travel() {
             return (
               <div
                 key={trip.id}
+                className="card-hover"
                 onClick={() => handleSelectTrip(trip.id!)}
                 style={{
                   ...T.glassCard,
                   cursor: 'pointer',
                   overflow: 'hidden',
                 }}
-                onMouseEnter={e => Object.assign(e.currentTarget.style, T.glassCardHover)}
-                onMouseLeave={e => Object.assign(e.currentTarget.style, {
-                  boxShadow: T.glassCard.boxShadow,
-                  transform: 'translateY(0)',
-                })}
               >
-                {/* Cover photo strip — full-bleed style */}
+                {/* Cover photo strip */}
                 {trip.coverPhoto ? (
                   <div style={{ height: 100, overflow: 'hidden', position: 'relative' }}>
                     <img src={trip.coverPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div style={{
                       position: 'absolute', inset: 0,
-                      background: 'linear-gradient(transparent 20%, rgba(0,0,0,0.4))',
+                      background: 'linear-gradient(transparent 20%, rgba(0,0,0,0.45))',
                     }} />
-                    {/* Title overlay on cover */}
                     <div style={{
                       position: 'absolute', bottom: 10, left: 14, right: 14,
                     }}>
@@ -230,12 +233,11 @@ export default function Travel() {
                         {trip.title}
                       </div>
                     </div>
-                    {/* Status badge on cover */}
                     {isActive && (
                       <div style={{
                         position: 'absolute', top: 8, right: 8,
                         padding: '2px 10px', borderRadius: 10,
-                        background: 'rgba(255,255,255,0.85)',
+                        background: 'rgba(255,255,255,0.9)',
                         backdropFilter: 'blur(8px)',
                         color: statusLabel.color,
                         fontSize: 10, fontWeight: 600,
@@ -244,82 +246,86 @@ export default function Travel() {
                       </div>
                     )}
                   </div>
-                ) : null}
-
-                <div style={{ padding: '11px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
-                  {!trip.coverPhoto && (
+                ) : (
+                  /* No cover — gradient mini hero */
+                  <div style={{
+                    height: 56, overflow: 'hidden', position: 'relative',
+                    background: gradients.primary,
+                  }}>
+                    {/* Decorative circles */}
                     <div style={{
-                      width: 46, height: 46, borderRadius: 14, flexShrink: 0,
-                      background: T.gradientLight,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: `inset 0 -2px 4px ${T.primary}08, inset 0 2px 4px rgba(255,255,255,0.5)`,
+                      position: 'absolute', top: -10, right: -10,
+                      width: 40, height: 40, borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.1)',
+                    }} />
+                    <div style={{
+                      position: 'absolute', bottom: -8, left: 20,
+                      width: 28, height: 28, borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.08)',
+                    }} />
+                    <div style={{
+                      position: 'absolute', bottom: 8, left: 14,
+                      fontWeight: 700, fontSize: 15, color: '#fff',
+                      textShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      right: 80,
                     }}>
-                      <span style={{ fontSize: 22 }}>🗺️</span>
+                      {trip.title}
                     </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {!trip.coverPhoto && (
+                    {isActive && (
                       <div style={{
-                        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3,
+                        position: 'absolute', top: 8, right: 8,
+                        padding: '2px 10px', borderRadius: 10,
+                        background: 'rgba(255,255,255,0.25)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
+                        fontSize: 10, fontWeight: 600,
                       }}>
-                        <div style={{
-                          fontWeight: 700, fontSize: 14, letterSpacing: '0.01em',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          flex: 1,
-                        }}>
-                          {trip.title}
-                        </div>
-                        {isActive && (
-                          <span style={{
-                            fontSize: 10, padding: '2px 8px', borderRadius: 8,
-                            background: statusLabel.bg, color: statusLabel.color, fontWeight: 600,
-                            flexShrink: 0,
-                          }}>
-                            {statusLabel.text}
-                          </span>
-                        )}
+                        {statusLabel.text}
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: trip.coverPhoto ? 0 : 2 }}>
-                      <span style={{
-                        fontSize: 11, padding: '2px 10px', borderRadius: 10,
-                        background: T.primaryBg, color: T.primary, fontWeight: 600,
-                        boxShadow: `inset 0 -1px 0 ${T.primary}12`,
-                      }}>
-                        {trip.destination}
-                      </span>
+                  </div>
+                )}
+
+                <div style={{ padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: 11, padding: '2px 10px', borderRadius: 10,
+                      background: colors.primaryBg, color: colors.primary, fontWeight: 600,
+                    }}>
+                      {trip.destination}
+                    </span>
+                    <span style={{
+                      fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                      background: colors.bg, color: colors.textTertiary,
+                    }}>
+                      {days}天
+                    </span>
+                    {tripSpotCount > 0 && (
                       <span style={{
                         fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                        background: 'rgba(0,0,0,0.03)', color: '#999',
+                        background: colors.bg, color: colors.textTertiary,
                       }}>
-                        {days}天
+                        {tripSpotCount}地点
                       </span>
-                      {tripSpotCount > 0 && (
-                        <span style={{
-                          fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                          background: 'rgba(0,0,0,0.03)', color: '#999',
-                        }}>
-                          {tripSpotCount}地点
-                        </span>
-                      )}
-                      {photoCount > 0 && (
-                        <span style={{
-                          fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                          background: 'rgba(0,0,0,0.03)', color: '#999',
-                        }}>
-                          {photoCount}照片
-                        </span>
-                      )}
-                    </div>
-                    <div style={{
-                      fontSize: 11, color: '#c0c0c0', marginTop: 4,
-                      display: 'flex', alignItems: 'center', gap: 6,
-                    }}>
-                      {formatDateRange(trip.startDate, trip.endDate)}
-                      {trip.rating != null && trip.rating > 0 && (
-                        <span style={{ color: '#faad14', letterSpacing: -1 }}>{'★'.repeat(trip.rating)}</span>
-                      )}
-                    </div>
+                    )}
+                    {photoCount > 0 && (
+                      <span style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                        background: colors.bg, color: colors.textTertiary,
+                      }}>
+                        {photoCount}照片
+                      </span>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: 11, color: colors.textTertiary, marginTop: 5,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    {formatDateRange(trip.startDate, trip.endDate)}
+                    {trip.rating != null && trip.rating > 0 && (
+                      <span style={{ color: '#faad14', letterSpacing: -1 }}>{'★'.repeat(trip.rating)}</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -337,10 +343,10 @@ export default function Travel() {
                 icon={<PlusOutlined />}
                 onClick={() => { setEditingTrip(null); setFormOpen(true) }}
                 style={{
-                  background: T.gradient,
+                  background: gradients.primary,
                   border: 'none', borderRadius: 20,
                   fontWeight: 600,
-                  boxShadow: `0 3px 12px ${T.shadow}`,
+                  boxShadow: shadows.primary,
                 }}
               >
                 创建第一次旅行
@@ -352,10 +358,9 @@ export default function Travel() {
     )
   }
 
-  // Glass panel base styles
   const panelGlass: React.CSSProperties = {
     ...T.glass,
-    background: 'rgba(255,255,255,0.78)',
+    background: 'rgba(255,255,255,0.82)',
   }
 
   return (
