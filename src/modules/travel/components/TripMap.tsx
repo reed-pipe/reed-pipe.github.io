@@ -5,7 +5,7 @@ import { Button, Empty } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined, PauseOutlined } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { sortSpots, getTransportEmoji, T } from '../utils'
-import { useMapProvider, toDisplayCoord } from '../mapConfig'
+import { toDisplayCoord } from '../mapConfig'
 import { fetchRoute, usesCurve } from '../routing'
 import MapTiles from './MapTiles'
 
@@ -55,7 +55,6 @@ function bezierPositions(
 
 function useRealRoutes(
   routePoints: { lat: number; lng: number; transport?: string; isHome: boolean }[],
-  provider: string,
 ) {
   const [segmentRoutes, setSegmentRoutes] = useState<[number, number][][]>([])
 
@@ -79,17 +78,17 @@ function useRealRoutes(
 
         if (route.length >= 2) {
           results.push(route.map(([lat, lng]) =>
-            toDisplayCoord(lat, lng, provider as 'osm' | 'amap') as [number, number],
+            toDisplayCoord(lat, lng) as [number, number],
           ))
         } else if (usesCurve(transport)) {
-          const fromD = toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number]
-          const toD = toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number]
+          const fromD = toDisplayCoord(from.lat, from.lng) as [number, number]
+          const toD = toDisplayCoord(to.lat, to.lng) as [number, number]
           results.push(bezierPositions(fromD, toD))
         } else {
           // Straight line fallback
           results.push([
-            toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number],
-            toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number],
+            toDisplayCoord(from.lat, from.lng) as [number, number],
+            toDisplayCoord(to.lat, to.lng) as [number, number],
           ])
         }
       }
@@ -98,7 +97,7 @@ function useRealRoutes(
 
     void load()
     return () => { cancelled = true }
-  }, [routeKey, provider]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [routeKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return segmentRoutes
 }
@@ -249,7 +248,6 @@ function makeIcon(label: string, isHome: boolean): L.DivIcon {
 // --------------- Main component ---------------
 
 export default function TripMap({ trip, spots, height = 400 }: Props) {
-  const [provider] = useMapProvider()
   const [animState, setAnimState] = useState<'idle' | 'playing' | 'paused' | 'done'>('idle')
 
   const sorted = useMemo(() => sortSpots(spots).filter(s => s.lat != null && s.lng != null), [spots])
@@ -267,10 +265,10 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
 
   const displayPoints = useMemo(
     () => routePoints.map(p => {
-      const [lat, lng] = toDisplayCoord(p.lat, p.lng, provider)
+      const [lat, lng] = toDisplayCoord(p.lat, p.lng)
       return { ...p, dLat: lat, dLng: lng }
     }),
-    [routePoints, provider],
+    [routePoints],
   )
 
   const displayCoords = useMemo<[number, number][]>(
@@ -278,7 +276,7 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
   )
 
   // Fetch real routes
-  const segmentRoutes = useRealRoutes(routePoints, provider)
+  const segmentRoutes = useRealRoutes(routePoints)
 
   // Flatten all segment routes into one polyline for static display
   const fullRoute = useMemo(() => segmentRoutes.flatMap(r => r), [segmentRoutes])
@@ -301,13 +299,12 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
   return (
     <div style={{ position: 'relative' }}>
       <MapContainer
-        key={provider}
         center={center}
         zoom={12}
         style={{ height, width: '100%', borderRadius: 12 }}
         zoomControl={true}
       >
-        <MapTiles provider={provider} />
+        <MapTiles />
         <BoundsFitter coords={displayCoords} />
 
         {/* Pin markers */}

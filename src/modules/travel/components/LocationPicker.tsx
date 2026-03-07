@@ -3,7 +3,7 @@ import { MapContainer, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { Input, Spin, Typography, theme } from 'antd'
 import { EnvironmentOutlined, SearchOutlined, AimOutlined } from '@ant-design/icons'
-import { useMapProvider, toDisplayCoord, fromDisplayCoord } from '../mapConfig'
+import { toDisplayCoord, fromDisplayCoord } from '../mapConfig'
 import { searchLocation, reverseGeocode, type GeoSearchResult } from '../geocode'
 import MapTiles from './MapTiles'
 
@@ -58,7 +58,6 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const { token: { colorPrimary, colorBgElevated, colorBorder, borderRadiusLG, colorTextSecondary } } = theme.useToken()
-  const [provider] = useMapProvider()
 
   useEffect(() => {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
@@ -124,7 +123,7 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
   }
 
   const handleMapPick = useCallback((displayLat: number, displayLng: number) => {
-    const [lat, lng] = fromDisplayCoord(displayLat, displayLng, provider)
+    const [lat, lng] = fromDisplayCoord(displayLat, displayLng)
     onChange?.({ lat, lng, address: value?.address ?? '' })
     reverseGeocode(lat, lng)
       .then((result) => {
@@ -133,9 +132,9 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
         }
       })
       .catch(() => {})
-  }, [onChange, value?.address, provider])
+  }, [onChange, value?.address])
 
-  const displayCenter = value ? toDisplayCoord(value.lat, value.lng, provider) : null
+  const displayCenter = value ? toDisplayCoord(value.lat, value.lng) : null
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
@@ -219,13 +218,13 @@ export default function LocationPicker({ value, onChange, compact, placeholder }
           {displayCenter && (
             <div style={{ marginTop: 6, borderRadius: 8, overflow: 'hidden' }}>
               <MapContainer
-                key={`${provider}-${displayCenter[0].toFixed(4)}-${displayCenter[1].toFixed(4)}`}
+                key={`${displayCenter[0].toFixed(4)}-${displayCenter[1].toFixed(4)}`}
                 center={displayCenter as [number, number]}
                 zoom={14}
                 style={{ height: 180, width: '100%', cursor: 'crosshair' }}
                 zoomControl={false}
               >
-                <MapTiles provider={provider} />
+                <MapTiles />
                 <Marker position={displayCenter as [number, number]} icon={pinIcon(colorPrimary)} />
                 <MapClickHandler onPick={handleMapPick} />
                 <MapUpdater center={displayCenter as [number, number]} />

@@ -1,62 +1,3 @@
-import { useSyncExternalStore } from 'react'
-
-export type MapProvider = 'osm' | 'amap'
-
-const STORAGE_KEY = 'map_provider_preference'
-const listeners = new Set<() => void>()
-
-function subscribe(fn: () => void) {
-  listeners.add(fn)
-  return () => { listeners.delete(fn) }
-}
-
-function notifyChange() {
-  listeners.forEach((fn) => fn())
-}
-
-function detectProvider(): MapProvider {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    if (tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || tz === 'Asia/Urumqi' || tz === 'Asia/Harbin') {
-      return 'amap'
-    }
-    if (navigator.language?.startsWith('zh')) return 'amap'
-  } catch { /* ignore */ }
-  return 'osm'
-}
-
-export function getMapProvider(): MapProvider {
-  const pref = localStorage.getItem(STORAGE_KEY)
-  if (pref === 'osm' || pref === 'amap') return pref
-  return detectProvider()
-}
-
-export function getMapProviderPreference(): 'auto' | 'osm' | 'amap' {
-  const pref = localStorage.getItem(STORAGE_KEY)
-  if (pref === 'osm' || pref === 'amap') return pref
-  return 'auto'
-}
-
-export function setMapProvider(provider: 'auto' | 'osm' | 'amap') {
-  if (provider === 'auto') {
-    localStorage.removeItem(STORAGE_KEY)
-  } else {
-    localStorage.setItem(STORAGE_KEY, provider)
-  }
-  notifyChange()
-}
-
-export function useMapProvider(): [MapProvider, (p: 'auto' | 'osm' | 'amap') => void] {
-  const provider = useSyncExternalStore(subscribe, () => getMapProvider())
-  return [provider, setMapProvider]
-}
-
-export function useMapProviderPreference(): 'auto' | 'osm' | 'amap' {
-  return useSyncExternalStore(subscribe, () => getMapProviderPreference())
-}
-
-// --------------- GCJ-02 Coordinate Conversion ---------------
-
 const PI = Math.PI
 const A = 6378245.0
 const EE = 0.00669342162296594323
@@ -105,12 +46,12 @@ export function gcj02ToWgs84(gcjLat: number, gcjLng: number): [number, number] {
   return [wLat, wLng]
 }
 
-export function toDisplayCoord(lat: number, lng: number, provider: MapProvider): [number, number] {
-  if (provider === 'amap') return wgs84ToGcj02(lat, lng)
-  return [lat, lng]
+/** WGS84 -> GCJ-02 for display on AMap tiles */
+export function toDisplayCoord(lat: number, lng: number): [number, number] {
+  return wgs84ToGcj02(lat, lng)
 }
 
-export function fromDisplayCoord(lat: number, lng: number, provider: MapProvider): [number, number] {
-  if (provider === 'amap') return gcj02ToWgs84(lat, lng)
-  return [lat, lng]
+/** GCJ-02 display coord -> WGS84 for storage */
+export function fromDisplayCoord(lat: number, lng: number): [number, number] {
+  return gcj02ToWgs84(lat, lng)
 }

@@ -5,7 +5,7 @@ import { Button, Spin } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined, PauseOutlined, CloseOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { Trip, TripSpot, TransportType } from '@/shared/db'
 import { getTransportEmoji, T } from '../utils'
-import { useMapProvider, toDisplayCoord } from '../mapConfig'
+import { toDisplayCoord } from '../mapConfig'
 import { fetchRoute, usesCurve } from '../routing'
 import MapTiles from './MapTiles'
 
@@ -141,11 +141,10 @@ function BoundsFitter({ coords }: { coords: [number, number][] }) {
 
 // --------------- Static Markers (imperative) ---------------
 
-function StaticMarkers({ markers, highlightTripId, tripMap, provider, onMarkerClick, onTripClick }: {
+function StaticMarkers({ markers, highlightTripId, tripMap, onMarkerClick, onTripClick }: {
   markers: MarkerData[]
   highlightTripId: number | null | undefined
   tripMap: Map<number, Trip>
-  provider: string
   onMarkerClick: (m: MarkerData) => void
   onTripClick?: (tripId: number) => void
 }) {
@@ -159,7 +158,7 @@ function StaticMarkers({ markers, highlightTripId, tripMap, provider, onMarkerCl
     if (highlightTripId != null) {
       const trip = tripMap.get(highlightTripId)
       if (trip?.departureLat != null && trip?.departureLng != null) {
-        const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider as 'osm' | 'amap')
+        const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng)
         const m = L.marker([dLat, dLng], { icon: homeIcon(), zIndexOffset: 500 })
           .addTo(map).bindPopup(`<b>${trip.departureName || '出发地'}</b>`)
         layersRef.current.push(m)
@@ -186,16 +185,15 @@ function StaticMarkers({ markers, highlightTripId, tripMap, provider, onMarkerCl
     }
 
     return () => { layersRef.current.forEach(l => map.removeLayer(l)); layersRef.current = [] }
-  }, [markers, highlightTripId, tripMap, provider, map, onMarkerClick, onTripClick])
+  }, [markers, highlightTripId, tripMap, map, onMarkerClick, onTripClick])
   return null
 }
 
 // --------------- Real Route Polyline ---------------
 
 /** Fetch and display real route between waypoints */
-function RealRouteDisplay({ waypoints, provider, color, weight, opacity, dashArray }: {
+function RealRouteDisplay({ waypoints, color, weight, opacity, dashArray }: {
   waypoints: { lat: number; lng: number; transport?: TransportType }[]
-  provider: string
   color: string; weight: number; opacity: number; dashArray?: string
 }) {
   const [positions, setPositions] = useState<[number, number][]>([])
@@ -219,17 +217,17 @@ function RealRouteDisplay({ waypoints, provider, color, weight, opacity, dashArr
         if (cancelled) return
         if (route.length >= 2) {
           for (const [lat, lng] of route) {
-            allPos.push(toDisplayCoord(lat, lng, provider as 'osm' | 'amap') as [number, number])
+            allPos.push(toDisplayCoord(lat, lng) as [number, number])
           }
         } else {
           // Fallback: bezier for curves, straight line for others
           if (usesCurve(to.transport)) {
-            const fromD = toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number]
-            const toD = toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number]
+            const fromD = toDisplayCoord(from.lat, from.lng) as [number, number]
+            const toD = toDisplayCoord(to.lat, to.lng) as [number, number]
             allPos.push(...bezierPositions(fromD, toD, to.transport, 80))
           } else {
-            allPos.push(toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number])
-            allPos.push(toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number])
+            allPos.push(toDisplayCoord(from.lat, from.lng) as [number, number])
+            allPos.push(toDisplayCoord(to.lat, to.lng) as [number, number])
           }
         }
       }
@@ -238,7 +236,7 @@ function RealRouteDisplay({ waypoints, provider, color, weight, opacity, dashArr
 
     void load()
     return () => { cancelled = true }
-  }, [waypointsKey, provider]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [waypointsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (positions.length < 2) return null
   return <Polyline positions={positions} pathOptions={{ color, weight, opacity, dashArray }} />
@@ -248,10 +246,9 @@ function RealRouteDisplay({ waypoints, provider, color, weight, opacity, dashArr
 
 type AnimState = 'idle' | 'loading' | 'playing' | 'paused' | 'done'
 
-function FootprintAnimator({ markers, playing, provider, onDone }: {
+function FootprintAnimator({ markers, playing, onDone }: {
   markers: MarkerData[]
   playing: boolean
-  provider: string
   onDone: () => void
 }) {
   const map = useMap()
@@ -360,12 +357,12 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
       if (route.length >= 2) {
         // Real road route
         positions = route.map(([lat, lng]) =>
-          toDisplayCoord(lat, lng, provider as 'osm' | 'amap') as [number, number],
+          toDisplayCoord(lat, lng) as [number, number],
         )
       } else {
         // Bezier curve fallback (plane, ship, or API failure)
-        const fromD = toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number]
-        const toD = toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number]
+        const fromD = toDisplayCoord(from.lat, from.lng) as [number, number]
+        const toD = toDisplayCoord(to.lat, to.lng) as [number, number]
         positions = bezierPositions(fromD, toD, m.transport, 150)
       }
 
@@ -549,7 +546,6 @@ function SpotCard({ marker, onClose, onClick }: {
 // --------------- Main component ---------------
 
 export default function FootprintMap({ trips, spots, height = 480, spotCount, highlightTripId, onTripClick }: Props) {
-  const [provider] = useMapProvider()
   const [animState, setAnimState] = useState<AnimState>('idle')
   const [selectedMarker, setSelectedMarker] = useState<MarkerData | null>(null)
 
@@ -603,10 +599,10 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
 
   const displayMarkers = useMemo(
     () => markers.map(m => {
-      const [lat, lng] = toDisplayCoord(m.lat, m.lng, provider)
+      const [lat, lng] = toDisplayCoord(m.lat, m.lng)
       return { ...m, lat, lng }
     }),
-    [markers, provider],
+    [markers],
   )
 
   const displayCoords = useMemo<[number, number][]>(
@@ -618,14 +614,14 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
       const trip = tripMap.get(highlightTripId)
       const hc: [number, number][] = []
       if (trip?.departureLat != null && trip?.departureLng != null) {
-        const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng, provider)
+        const [dLat, dLng] = toDisplayCoord(trip.departureLat, trip.departureLng)
         hc.push([dLat, dLng])
       }
       for (const m of displayMarkers) if (m.tripId === highlightTripId) hc.push([m.lat, m.lng])
       return hc.length > 0 ? hc : displayCoords
     }
     return displayCoords
-  }, [highlightTripId, displayMarkers, displayCoords, tripMap, provider])
+  }, [highlightTripId, displayMarkers, displayCoords, tripMap])
 
   // Waypoints for highlighted trip's real route
   const highlightWaypoints = useMemo(() => {
@@ -666,8 +662,8 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
         @keyframes spotCardSlideUp{0%{opacity:0;transform:translateX(-50%) translateY(16px)}100%{opacity:1;transform:translateX(-50%) translateY(0)}}
       `}</style>
 
-      <MapContainer key={provider} center={center} zoom={4} style={{ height: '100%', width: '100%' }} zoomControl={true}>
-        <MapTiles provider={provider} />
+      <MapContainer center={center} zoom={4} style={{ height: '100%', width: '100%' }} zoomControl={true}>
+        <MapTiles />
         {fitCoords.length > 0 && <BoundsFitter coords={fitCoords} />}
 
         {/* Static pin markers */}
@@ -676,7 +672,6 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
             markers={displayMarkers}
             highlightTripId={highlightTripId}
             tripMap={tripMap}
-            provider={provider}
             onMarkerClick={handleMarkerClick}
             onTripClick={onTripClick}
           />
@@ -686,7 +681,6 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
         {showStatic && highlightWaypoints.length >= 2 && (
           <RealRouteDisplay
             waypoints={highlightWaypoints}
-            provider={provider}
             color={T.route}
             weight={4}
             opacity={0.7}
@@ -699,7 +693,6 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
           <FootprintAnimator
             markers={displayMarkers}
             playing={animState === 'playing'}
-            provider={provider}
             onDone={() => setAnimState('done')}
           />
         )}

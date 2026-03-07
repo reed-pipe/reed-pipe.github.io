@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Space, Select, Segmented, Typography, Grid, message } from 'antd'
+import { Button, Space, Select, Typography, Grid, message } from 'antd'
 import { PlusOutlined, DownloadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import 'leaflet/dist/leaflet.css'
@@ -14,7 +14,6 @@ import {
   sortTrips, getTripStatusLabel, T,
   type TripSortKey,
 } from './utils'
-import { useMapProviderPreference, setMapProvider } from './mapConfig'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
@@ -42,7 +41,6 @@ export default function Travel() {
   const [sortKey, setSortKey] = useState<TripSortKey>('date')
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('half')
-  const mapPref = useMapProviderPreference()
 
   const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
   const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
@@ -94,16 +92,6 @@ export default function Travel() {
 
   const panelHeader = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-      <Segmented
-        size="small"
-        options={[
-          { label: '自动', value: 'auto' },
-          { label: 'OSM', value: 'osm' },
-          { label: '高德', value: 'amap' },
-        ]}
-        value={mapPref}
-        onChange={v => setMapProvider(v as 'auto' | 'osm' | 'amap')}
-      />
       <Space size={4}>
         {trips.length > 0 && (
           <Button icon={<DownloadOutlined />} size="small" onClick={handleExport} type="text"
