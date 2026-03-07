@@ -9,13 +9,25 @@ import type { Trip } from '@/shared/db'
 import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
-import { exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange, T } from './utils'
+import TravelYearMap from './components/TravelYearMap'
+import {
+  exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange,
+  sortTrips, getTripStatusLabel, T,
+  type TripSortKey,
+} from './utils'
 import { useMapProviderPreference, setMapProvider } from './mapConfig'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
 
 const PANEL_WIDTH = 370
+
+const SORT_OPTIONS = [
+  { label: '按日期', value: 'date' },
+  { label: '按创建', value: 'created' },
+  { label: '按评分', value: 'rating' },
+  { label: '按花费', value: 'cost' },
+]
 
 export default function Travel() {
   const db = useDb()
@@ -28,6 +40,7 @@ export default function Travel() {
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [yearFilter, setYearFilter] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<TripSortKey>('date')
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('half')
   const mapPref = useMapProviderPreference()
@@ -39,8 +52,8 @@ export default function Travel() {
     let result = trips
     if (tagFilter) result = result.filter(t => t.tags.includes(tagFilter))
     if (yearFilter) result = result.filter(t => t.startDate.startsWith(yearFilter))
-    return result
-  }, [trips, tagFilter, yearFilter])
+    return sortTrips(result, sortKey)
+  }, [trips, tagFilter, yearFilter, sortKey])
 
   const allTags = useMemo(() => [...new Set(trips.flatMap(t => t.tags))].sort(), [trips])
   const allYears = useMemo(() => {
@@ -134,7 +147,7 @@ export default function Travel() {
 
     return (
       <>
-        {/* Stats bar — glass chips */}
+        {/* Stats bar */}
         {trips.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
             {[
@@ -158,9 +171,21 @@ export default function Travel() {
           </div>
         )}
 
-        {/* Filters */}
-        {trips.length > 0 && (allTags.length > 0 || allYears.length > 1) && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        {/* Travel Year Map (heatmap + bar chart) */}
+        {trips.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <TravelYearMap trips={trips} />
+          </div>
+        )}
+
+        {/* Filters + Sort */}
+        {trips.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
+            <Select
+              size="small" value={sortKey} onChange={setSortKey}
+              options={SORT_OPTIONS}
+              style={{ minWidth: 80 }}
+            />
             {allTags.length > 0 && (
               <Select placeholder="标签" allowClear size="small"
                 style={{ minWidth: 90 }} value={tagFilter} onChange={setTagFilter}
@@ -181,12 +206,15 @@ export default function Travel() {
           </div>
         )}
 
-        {/* Trip list — glass cards */}
+        {/* Trip list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filteredTrips.length > 0 ? filteredTrips.map(trip => {
             const days = tripDays(trip.startDate, trip.endDate)
             const tripSpotCount = allSpots.filter(s => s.tripId === trip.id).length
             const photoCount = allSpots.filter(s => s.tripId === trip.id).reduce((n, s) => n + s.photos.length, 0)
+            const statusLabel = getTripStatusLabel(trip)
+            const isActive = statusLabel.text !== '已完成'
+
             return (
               <div
                 key={trip.id}
@@ -202,16 +230,42 @@ export default function Travel() {
                   transform: 'translateY(0)',
                 })}
               >
-                {/* Cover photo strip */}
-                {trip.coverPhoto && (
-                  <div style={{ height: 88, overflow: 'hidden', position: 'relative' }}>
+                {/* Cover photo strip — full-bleed style */}
+                {trip.coverPhoto ? (
+                  <div style={{ height: 100, overflow: 'hidden', position: 'relative' }}>
                     <img src={trip.coverPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div style={{
                       position: 'absolute', inset: 0,
-                      background: 'linear-gradient(transparent 30%, rgba(0,0,0,0.25))',
+                      background: 'linear-gradient(transparent 20%, rgba(0,0,0,0.4))',
                     }} />
+                    {/* Title overlay on cover */}
+                    <div style={{
+                      position: 'absolute', bottom: 10, left: 14, right: 14,
+                    }}>
+                      <div style={{
+                        fontWeight: 700, fontSize: 15, color: '#fff',
+                        textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {trip.title}
+                      </div>
+                    </div>
+                    {/* Status badge on cover */}
+                    {isActive && (
+                      <div style={{
+                        position: 'absolute', top: 8, right: 8,
+                        padding: '2px 10px', borderRadius: 10,
+                        background: 'rgba(255,255,255,0.85)',
+                        backdropFilter: 'blur(8px)',
+                        color: statusLabel.color,
+                        fontSize: 10, fontWeight: 600,
+                      }}>
+                        {statusLabel.text}
+                      </div>
+                    )}
                   </div>
-                )}
+                ) : null}
+
                 <div style={{ padding: '11px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
                   {!trip.coverPhoto && (
                     <div style={{
@@ -224,13 +278,29 @@ export default function Travel() {
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: 700, fontSize: 14, letterSpacing: '0.01em',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {trip.title}
-                    </div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 5 }}>
+                    {!trip.coverPhoto && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3,
+                      }}>
+                        <div style={{
+                          fontWeight: 700, fontSize: 14, letterSpacing: '0.01em',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          flex: 1,
+                        }}>
+                          {trip.title}
+                        </div>
+                        {isActive && (
+                          <span style={{
+                            fontSize: 10, padding: '2px 8px', borderRadius: 8,
+                            background: statusLabel.bg, color: statusLabel.color, fontWeight: 600,
+                            flexShrink: 0,
+                          }}>
+                            {statusLabel.text}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: trip.coverPhoto ? 0 : 2 }}>
                       <span style={{
                         fontSize: 11, padding: '2px 10px', borderRadius: 10,
                         background: T.primaryBg, color: T.primary, fontWeight: 600,
@@ -281,7 +351,20 @@ export default function Travel() {
           ) : (
             <div style={{ padding: 48, textAlign: 'center' }}>
               <div style={{ fontSize: 42, marginBottom: 12, opacity: 0.2 }}>🌍</div>
-              <Text type="secondary" style={{ fontSize: 13 }}>还没有旅行记录</Text>
+              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 16 }}>还没有旅行记录</Text>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => { setEditingTrip(null); setFormOpen(true) }}
+                style={{
+                  background: T.gradient,
+                  border: 'none', borderRadius: 20,
+                  fontWeight: 600,
+                  boxShadow: `0 3px 12px ${T.shadow}`,
+                }}
+              >
+                创建第一次旅行
+              </Button>
             </div>
           )}
         </div>

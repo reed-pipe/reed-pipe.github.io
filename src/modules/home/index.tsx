@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { Card, Space, Typography, Progress, InputNumber, Button, Grid, message, theme } from 'antd'
-import { HeartOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, FireOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { HeartOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, FireOutlined, CheckCircleOutlined, EnvironmentOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import dayjs from 'dayjs'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
+import type { Trip, TripSpot } from '@/shared/db'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
@@ -42,6 +43,13 @@ export default function Home() {
     db.weightRecords.orderBy('createdAt').toArray(),
     [db],
   ) ?? []
+
+  const trips = useLiveQuery(() =>
+    db.trips.orderBy('startDate').reverse().toArray(),
+    [db],
+  ) ?? []
+
+  const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
 
   const heightVal = useLiveQuery(async () => {
     const item = await db.kv.get('body_height')
@@ -217,6 +225,99 @@ export default function Home() {
           自动记录为今天 {new Date().getHours() < 14 ? '早晨' : '晚上'}
         </Text>
       </Card>
+
+      {/* 旅行概览 */}
+      <TravelSummaryCard trips={trips} spots={allSpots} onNavigate={() => navigate('/travel')} isMobile={isMobile} />
     </Space>
+  )
+}
+
+/** Travel summary card for home page */
+function TravelSummaryCard({ trips, spots, onNavigate, isMobile }: {
+  trips: Trip[]; spots: TripSpot[]; onNavigate: () => void; isMobile: boolean
+}) {
+
+  const totalTrips = trips.length
+  const destinations = new Set(trips.map(t => t.destination)).size
+  const photoCount = spots.reduce((n, s) => n + s.photos.length, 0)
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Find next upcoming or current trip
+  const activeTrip = trips.find(t => t.endDate >= today)
+  const isOngoing = activeTrip && activeTrip.startDate <= today
+  const isUpcoming = activeTrip && activeTrip.startDate > today
+
+  let statusText = ''
+  if (isOngoing && activeTrip) {
+    const dayNum = Math.floor((new Date(today + 'T00:00:00').getTime() - new Date(activeTrip.startDate + 'T00:00:00').getTime()) / 86_400_000) + 1
+    statusText = `${activeTrip.title} · Day ${dayNum}`
+  } else if (isUpcoming && activeTrip) {
+    const daysUntil = Math.ceil((new Date(activeTrip.startDate + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86_400_000)
+    statusText = `${activeTrip.title} · ${daysUntil}天后出发`
+  }
+
+  // Recent trip (most recent completed)
+  const recentTrip = trips.find(t => t.endDate < today)
+
+  return (
+    <Card
+      hoverable
+      onClick={onNavigate}
+      styles={{ body: { padding: isMobile ? 16 : 20 } }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Space>
+          <EnvironmentOutlined style={{ color: '#F5722D', fontSize: 18 }} />
+          <Text strong style={{ fontSize: 16 }}>旅行足迹</Text>
+        </Space>
+        {statusText && (
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 10,
+            background: isOngoing ? '#ECFDF5' : '#EFF6FF',
+            color: isOngoing ? '#059669' : '#2563EB',
+            fontWeight: 600,
+          }}>
+            {statusText}
+          </span>
+        )}
+      </div>
+
+      {totalTrips > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 20, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#F5722D', lineHeight: 1.2 }}>
+                {totalTrips}
+                <span style={{ fontSize: 12, fontWeight: 400, marginLeft: 2 }}>次旅行</span>
+              </div>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {destinations} 个目的地 · {photoCount} 张照片
+              </Text>
+            </div>
+          </div>
+
+          {recentTrip && (
+            <div style={{
+              flex: 1, minWidth: 140,
+              padding: '8px 12px', borderRadius: 12,
+              background: 'linear-gradient(135deg, #FFF7E6, #FFE8D5)',
+            }}>
+              <Text type="secondary" style={{ fontSize: 10 }}>最近旅行</Text>
+              <div style={{
+                fontSize: 13, fontWeight: 600, color: '#1a1a1a',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {recentTrip.title}
+              </div>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {recentTrip.destination} · {recentTrip.startDate.slice(5).replace('-', '.')}
+              </Text>
+            </div>
+          )}
+        </div>
+      ) : (
+        <Text type="secondary">还没有旅行记录，点击开始记录</Text>
+      )}
+    </Card>
   )
 }

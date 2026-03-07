@@ -1,4 +1,4 @@
-import type { Trip, TripSpot, TransportType } from '@/shared/db'
+import type { Trip, TripSpot, TransportType, CostCategory } from '@/shared/db'
 
 // Travel module design tokens
 export const T = {
@@ -56,6 +56,62 @@ export const T = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
     borderRadius: 12,
   } as React.CSSProperties,
+}
+
+/** 花费分类 */
+export const COST_CATEGORIES: { value: CostCategory; label: string; emoji: string; color: string }[] = [
+  { value: 'transport', label: '交通', emoji: '🚗', color: '#2563EB' },
+  { value: 'food', label: '餐饮', emoji: '🍜', color: '#F5722D' },
+  { value: 'hotel', label: '住宿', emoji: '🏨', color: '#8B5CF6' },
+  { value: 'ticket', label: '门票', emoji: '🎫', color: '#059669' },
+  { value: 'shopping', label: '购物', emoji: '🛍️', color: '#EC4899' },
+  { value: 'other', label: '其他', emoji: '💰', color: '#6B7280' },
+]
+
+export function getCostCategoryLabel(cat?: CostCategory): string {
+  return COST_CATEGORIES.find(c => c.value === cat)?.label ?? '其他'
+}
+
+export function getCostCategoryEmoji(cat?: CostCategory): string {
+  return COST_CATEGORIES.find(c => c.value === cat)?.emoji ?? '💰'
+}
+
+/** 旅行状态 */
+export type TripStatus = 'upcoming' | 'ongoing' | 'completed'
+
+export function getTripStatus(trip: Trip): TripStatus {
+  const today = new Date().toISOString().slice(0, 10)
+  if (today < trip.startDate) return 'upcoming'
+  if (today > trip.endDate) return 'completed'
+  return 'ongoing'
+}
+
+export function getTripStatusLabel(trip: Trip): { text: string; color: string; bg: string } {
+  const status = getTripStatus(trip)
+  const today = new Date().toISOString().slice(0, 10)
+  if (status === 'upcoming') {
+    const days = Math.ceil((new Date(trip.startDate + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86_400_000)
+    return { text: `${days}天后出发`, color: '#2563EB', bg: '#EFF6FF' }
+  }
+  if (status === 'ongoing') {
+    const dayNum = Math.floor((new Date(today + 'T00:00:00').getTime() - new Date(trip.startDate + 'T00:00:00').getTime()) / 86_400_000) + 1
+    return { text: `进行中 · Day ${dayNum}`, color: '#059669', bg: '#ECFDF5' }
+  }
+  return { text: '已完成', color: '#6B7280', bg: '#F3F4F6' }
+}
+
+/** 排序方式 */
+export type TripSortKey = 'date' | 'created' | 'rating' | 'cost'
+
+export function sortTrips(trips: Trip[], sortKey: TripSortKey): Trip[] {
+  const sorted = [...trips]
+  switch (sortKey) {
+    case 'date': return sorted.sort((a, b) => b.startDate.localeCompare(a.startDate))
+    case 'created': return sorted.sort((a, b) => b.createdAt - a.createdAt)
+    case 'rating': return sorted.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    case 'cost': return sorted.sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
+    default: return sorted
+  }
 }
 
 /** 交通工具配置 */

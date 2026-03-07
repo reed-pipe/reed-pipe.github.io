@@ -5,7 +5,7 @@ import type { UploadFile } from 'antd'
 import dayjs from 'dayjs'
 import type { TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { compressImage, TRANSPORT_OPTIONS } from '../utils'
+import { compressImage, TRANSPORT_OPTIONS, COST_CATEGORIES } from '../utils'
 import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
@@ -44,6 +44,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
           name: spot.name,
           date: dayjs(spot.date),
           cost: spot.cost,
+          costCategory: spot.costCategory,
           note: spot.note,
           transport: spot.transport,
         })
@@ -100,6 +101,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         lng: location?.lng,
         photos,
         cost: values.cost,
+        costCategory: values.costCategory,
         note: values.note,
         transport: values.transport,
       }
@@ -159,9 +161,18 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
         <Form.Item label="位置">
           <LocationPicker value={location} onChange={setLocation} />
         </Form.Item>
-        <Form.Item name="cost" label="花费">
-          <InputNumber prefix="¥" min={0} precision={0} style={{ width: '100%' }} placeholder="可选" />
-        </Form.Item>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Form.Item name="cost" label="花费" style={{ flex: 1 }}>
+            <InputNumber prefix="¥" min={0} precision={0} style={{ width: '100%' }} placeholder="可选" />
+          </Form.Item>
+          <Form.Item name="costCategory" label="分类" style={{ flex: 1 }}>
+            <Select
+              placeholder="花费分类"
+              allowClear
+              options={COST_CATEGORIES.map(c => ({ value: c.value, label: `${c.emoji} ${c.label}` }))}
+            />
+          </Form.Item>
+        </div>
         <Form.Item label="照片">
           <Upload
             listType="picture-card"

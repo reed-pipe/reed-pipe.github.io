@@ -12,13 +12,15 @@ import {
 } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { formatDateRange, tripDays, formatCost, compressImage, T } from '../utils'
+import { formatDateRange, tripDays, formatCost, compressImage, getTripStatusLabel, T } from '../utils'
 import { reverseGeocode } from '../geocode'
 import type React from 'react'
 import SpotTimeline from './SpotTimeline'
 import SpotForm, { type SpotInitialData } from './SpotForm'
 import TripMap from './TripMap'
 import PhotoGallery from './PhotoGallery'
+import CostChart from './CostChart'
+import ShareCard from './ShareCard'
 
 const { Text, Paragraph, Title } = Typography
 
@@ -42,6 +44,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   const spotCostTotal = spots.reduce((s, sp) => s + (sp.cost ?? 0), 0)
   const photoCount = spots.reduce((s, sp) => s + sp.photos.length, 0)
   const nextSortOrder = spots.length > 0 ? Math.max(...spots.map((s) => s.sortOrder)) + 1 : 0
+  const statusLabel = getTripStatusLabel(trip)
 
   const handleDelete = () => {
     Modal.confirm({
@@ -131,6 +134,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           返回
         </Button>
         <Space size={4}>
+          <ShareCard trip={trip} spots={spots} />
           <Button type="text" icon={<EditOutlined />} onClick={onEdit}
             style={{
               ...T.glassButton,
@@ -170,14 +174,62 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
               {trip.destination} · {formatDateRange(trip.startDate, trip.endDate)}
             </Text>
           </div>
+          {/* Status badge on cover */}
+          <div style={{
+            position: 'absolute', top: 12, left: 12,
+            padding: '3px 12px', borderRadius: 12,
+            background: statusLabel.bg,
+            color: statusLabel.color,
+            fontSize: 11, fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            backdropFilter: 'blur(8px)',
+          }}>
+            {statusLabel.text}
+          </div>
         </div>
       ) : (
-        <div style={{ marginBottom: 10 }}>
-          <Title level={4} style={{ marginBottom: 4, fontSize: 18, letterSpacing: '0.01em' }}>{trip.title}</Title>
+        <div style={{
+          marginBottom: 14, padding: '20px 20px 16px',
+          borderRadius: 20, overflow: 'hidden',
+          background: T.gradient,
+          boxShadow: `0 4px 20px ${T.shadow}`,
+          position: 'relative',
+        }}>
+          {/* Decorative circles */}
+          <div style={{
+            position: 'absolute', top: -20, right: -20,
+            width: 80, height: 80, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.1)',
+          }} />
+          <div style={{
+            position: 'absolute', bottom: -10, left: 30,
+            width: 50, height: 50, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.08)',
+          }} />
+          <Title level={4} style={{
+            marginBottom: 4, color: '#fff', fontSize: 18,
+            textShadow: '0 1px 4px rgba(0,0,0,0.15)',
+          }}>
+            {trip.title}
+          </Title>
+          <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12 }}>
+            {trip.destination} · {formatDateRange(trip.startDate, trip.endDate)}
+          </Text>
+          {/* Status badge */}
+          <div style={{
+            position: 'absolute', top: 12, right: 12,
+            padding: '3px 12px', borderRadius: 12,
+            background: 'rgba(255,255,255,0.25)',
+            backdropFilter: 'blur(8px)',
+            color: '#fff',
+            fontSize: 11, fontWeight: 600,
+          }}>
+            {statusLabel.text}
+          </div>
         </div>
       )}
 
-      {/* Info chips — glass style */}
+      {/* Info chips */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {trip.departureName && (
           <InfoChip icon="🏠" text={`${trip.departureName} →`} variant="default" />
@@ -253,7 +305,14 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           {
             key: 'timeline',
             label: '时间线',
-            children: <SpotTimeline spots={spots} tripStartDate={trip.startDate} onEditSpot={handleEditSpot} />,
+            children: (
+              <SpotTimeline
+                spots={spots}
+                tripStartDate={trip.startDate}
+                onEditSpot={handleEditSpot}
+                onDataChanged={onDataChanged}
+              />
+            ),
           },
           {
             key: 'map',
@@ -263,12 +322,23 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           {
             key: 'photos',
             label: `照片${photoCount > 0 ? ` (${photoCount})` : ''}`,
-            children: <PhotoGallery spots={spots} onDataChanged={onDataChanged} />,
+            children: (
+              <PhotoGallery
+                spots={spots}
+                tripStartDate={trip.startDate}
+                onDataChanged={onDataChanged}
+              />
+            ),
+          },
+          {
+            key: 'cost',
+            label: '花费',
+            children: <CostChart spots={spots} tripTotalCost={trip.totalCost} />,
           },
         ]}
       />
 
-      {/* Summary — glass inset */}
+      {/* Summary */}
       {trip.summary && (
         <div style={{
           padding: '14px 16px',
@@ -278,7 +348,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
           boxShadow: `0 2px 8px ${T.shadowLight}, inset 0 1px 0 rgba(255,255,255,0.7)`,
         }}>
           <Text style={{ fontSize: 11, color: colorTextSecondary, display: 'block', marginBottom: 6, fontWeight: 500 }}>
-            ✍️ 旅行感想
+            旅行感想
           </Text>
           <Paragraph style={{ marginBottom: 0, fontSize: 13, lineHeight: 1.7 }}>{trip.summary}</Paragraph>
         </div>

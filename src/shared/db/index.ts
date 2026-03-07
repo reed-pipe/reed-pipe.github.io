@@ -31,6 +31,7 @@ export interface BodyMeasurement {
 }
 
 export type TransportType = 'plane' | 'train' | 'car' | 'bus' | 'ship' | 'bike' | 'walk' | 'other'
+export type CostCategory = 'transport' | 'food' | 'hotel' | 'ticket' | 'shopping' | 'other'
 
 export interface Trip {
   id: number
@@ -62,6 +63,7 @@ export interface TripSpot {
   photos: string[] // base64 data URLs
   note?: string
   cost?: number
+  costCategory?: CostCategory
   transport?: TransportType
   sortOrder: number
   createdAt: number
@@ -94,6 +96,15 @@ export function createDb(username: string): AppDb {
   })
 
   db.version(4).stores({
+    kv: 'key',
+    weightRecords: '++id, date, createdAt',
+    bodyMeasurements: '++id, date, createdAt',
+    trips: '++id, startDate, createdAt',
+    tripSpots: '++id, tripId, date, createdAt',
+  })
+
+  // v5: add costCategory to tripSpots (no index change needed, just schema compat)
+  db.version(5).stores({
     kv: 'key',
     weightRecords: '++id, date, createdAt',
     bodyMeasurements: '++id, date, createdAt',
