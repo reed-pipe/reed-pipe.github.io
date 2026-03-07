@@ -6,6 +6,7 @@ import { PlayCircleOutlined, ReloadOutlined, PauseOutlined } from '@ant-design/i
 import type { Trip, TripSpot } from '@/shared/db'
 import { sortSpots, getTransportEmoji, T } from '../utils'
 import { useMapProvider, toDisplayCoord } from '../mapConfig'
+import { fetchRoute, usesCurve } from '../routing'
 import MapTiles from './MapTiles'
 
 interface Props {
@@ -17,35 +18,108 @@ interface Props {
 function BoundsFitter({ coords }: { coords: [number, number][] }) {
   const map = useMap()
   useEffect(() => {
-    if (coords.length > 1) {
-      map.fitBounds(L.latLngBounds(coords).pad(0.15))
-    } else if (coords.length === 1) {
-      map.setView(coords[0]!, 12)
-    }
+    if (coords.length > 1) map.fitBounds(L.latLngBounds(coords).pad(0.15))
+    else if (coords.length === 1) map.setView(coords[0]!, 12)
     setTimeout(() => map.invalidateSize(), 100)
   }, [map, coords])
   return null
 }
 
-/** Route animation controller — uses imperative Leaflet API */
-function RouteAnimator({ segments, playing, colorPrimary, onDone }: {
-  segments: { from: [number, number]; to: [number, number]; emoji: string }[]
+// --------------- Bezier fallback ---------------
+
+function bezierPositions(
+  from: [number, number], to: [number, number], steps = 80,
+): [number, number][] {
+  const midLat = (from[0] + to[0]) / 2
+  const midLng = (from[1] + to[1]) / 2
+  const dx = to[1] - from[1], dy = to[0] - from[0]
+  const len = Math.sqrt(dx * dx + dy * dy)
+  const factor = 0.25
+  const offset = len * factor
+  const ctrlLat = midLat + (len > 0.001 ? (-dx / len) * offset : 0)
+  const ctrlLng = midLng + (len > 0.001 ? (dy / len) * offset : 0)
+
+  const positions: [number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const mt = 1 - t
+    positions.push([
+      mt * mt * from[0] + 2 * mt * t * ctrlLat + t * t * to[0],
+      mt * mt * from[1] + 2 * mt * t * ctrlLng + t * t * to[1],
+    ])
+  }
+  return positions
+}
+
+// --------------- Real Route Display ---------------
+
+function useRealRoutes(
+  routePoints: { lat: number; lng: number; transport?: string; isHome: boolean }[],
+  provider: string,
+) {
+  const [segmentRoutes, setSegmentRoutes] = useState<[number, number][][]>([])
+
+  const routeKey = useMemo(
+    () => routePoints.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|'),
+    [routePoints],
+  )
+
+  useEffect(() => {
+    if (routePoints.length < 2) { setSegmentRoutes([]); return }
+    let cancelled = false
+
+    async function load() {
+      const results: [number, number][][] = []
+      for (let i = 0; i < routePoints.length - 1; i++) {
+        const from = routePoints[i]!
+        const to = routePoints[i + 1]!
+        const transport = to.isHome ? undefined : (to.transport as import('@/shared/db').TransportType | undefined)
+        const route = await fetchRoute(from, to, transport)
+        if (cancelled) return
+
+        if (route.length >= 2) {
+          results.push(route.map(([lat, lng]) =>
+            toDisplayCoord(lat, lng, provider as 'osm' | 'amap') as [number, number],
+          ))
+        } else if (usesCurve(transport)) {
+          const fromD = toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number]
+          const toD = toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number]
+          results.push(bezierPositions(fromD, toD))
+        } else {
+          // Straight line fallback
+          results.push([
+            toDisplayCoord(from.lat, from.lng, provider as 'osm' | 'amap') as [number, number],
+            toDisplayCoord(to.lat, to.lng, provider as 'osm' | 'amap') as [number, number],
+          ])
+        }
+      }
+      if (!cancelled) setSegmentRoutes(results)
+    }
+
+    void load()
+    return () => { cancelled = true }
+  }, [routeKey, provider]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return segmentRoutes
+}
+
+// --------------- Route Animator (real routes) ---------------
+
+function RouteAnimator({ segmentRoutes, playing, onDone }: {
+  segmentRoutes: [number, number][][]
   playing: boolean
-  colorPrimary: string
   onDone: () => void
 }) {
   const map = useMap()
   const onDoneRef = useRef(onDone)
   onDoneRef.current = onDone
   const ref = useRef({
-    lines: [] as L.Polyline[],
-    movers: [] as L.Marker[],
+    layers: [] as L.Layer[],
     segIdx: 0,
     step: 0,
-    totalSteps: 0,
-    dLat: 0,
-    dLng: 0,
-    from: null as L.LatLng | null,
+    stepsPerFrame: 1,
+    lastDrawnIdx: 0,
+    positions: [] as [number, number][],
     currentLine: null as L.Polyline | null,
     currentMover: null as L.Marker | null,
     rafId: null as number | null,
@@ -56,87 +130,70 @@ function RouteAnimator({ segments, playing, colorPrimary, onDone }: {
     const s = ref.current
     if (s.rafId != null) cancelAnimationFrame(s.rafId)
     s.rafId = null
-    s.lines.forEach((l) => map.removeLayer(l))
-    s.movers.forEach((m) => map.removeLayer(m))
-    s.lines = []
-    s.movers = []
-    s.segIdx = 0
-    s.step = 0
-    s.started = false
-    s.currentLine = null
-    s.currentMover = null
+    s.layers.forEach(l => map.removeLayer(l))
+    s.layers = []; s.segIdx = 0; s.step = 0; s.started = false
+    s.currentLine = null; s.currentMover = null
   }, [map])
 
   useEffect(() => {
     const s = ref.current
-
     if (!playing) {
-      // Pause: stop RAF
       if (s.rafId != null) { cancelAnimationFrame(s.rafId); s.rafId = null }
       return
     }
+    if (!s.started) { cleanup(); s.started = true; startSegment() }
+    else if (s.step > 0 && s.step < s.positions.length - 1) tick()
+    else startSegment()
 
-    // Playing
-    if (!s.started) {
-      cleanup()
-      s.started = true
-      animateSegment()
-    } else {
-      // Resume from pause
-      if (s.step > 0 && s.step < s.totalSteps) {
-        tick()
-      } else {
-        animateSegment()
-      }
-    }
-
-    function animateSegment() {
+    function startSegment() {
       const s = ref.current
-      if (s.segIdx >= segments.length) {
-        onDoneRef.current()
-        return
-      }
-      const seg = segments[s.segIdx]!
-      const from = L.latLng(seg.from[0], seg.from[1])
-      const to = L.latLng(seg.to[0], seg.to[1])
-      const dist = from.distanceTo(to)
-      s.totalSteps = Math.max(30, Math.min(120, Math.round(dist / 5000)))
-      s.dLat = (to.lat - from.lat) / s.totalSteps
-      s.dLng = (to.lng - from.lng) / s.totalSteps
-      s.from = from
-      s.step = 0
+      if (s.segIdx >= segmentRoutes.length) { onDoneRef.current(); return }
+
+      const positions = segmentRoutes[s.segIdx]!
+      s.positions = positions
+      s.step = 0; s.lastDrawnIdx = 0
+      const targetFrames = Math.max(40, Math.min(150, positions.length))
+      s.stepsPerFrame = Math.max(1, positions.length / targetFrames)
 
       const icon = L.divIcon({
         className: '',
-        html: `<span style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))">${seg.emoji}</span>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        html: `<span style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))">🚗</span>`,
+        iconSize: [28, 28], iconAnchor: [14, 14],
       })
-      s.currentMover = L.marker(from, { icon, zIndexOffset: 1000 }).addTo(map)
-      s.movers.push(s.currentMover)
-      s.currentLine = L.polyline([from], { color: colorPrimary, weight: 3.5, opacity: 0.9 }).addTo(map)
-      s.lines.push(s.currentLine)
+      const start = positions[0]!
+      s.currentMover = L.marker([start[0], start[1]], { icon, zIndexOffset: 1000 }).addTo(map)
+      s.layers.push(s.currentMover)
+      s.currentLine = L.polyline([[start[0], start[1]]], { color: T.primary, weight: 3.5, opacity: 0.9 }).addTo(map)
+      s.layers.push(s.currentLine)
       tick()
     }
 
     function tick() {
       const s = ref.current
-      s.step++
-      const lat = s.from!.lat + s.dLat * s.step
-      const lng = s.from!.lng + s.dLng * s.step
-      const pos = L.latLng(lat, lng)
-      s.currentLine!.addLatLng(pos)
-      s.currentMover!.setLatLng(pos)
-      if (s.step < s.totalSteps) {
+      s.step += s.stepsPerFrame
+      const idx = Math.min(Math.floor(s.step), s.positions.length - 1)
+      const pos = s.positions[idx]!
+
+      while (s.lastDrawnIdx < idx) {
+        s.lastDrawnIdx++
+        const p = s.positions[s.lastDrawnIdx]!
+        s.currentLine!.addLatLng(L.latLng(p[0], p[1]))
+      }
+
+      s.currentMover!.setLatLng(L.latLng(pos[0], pos[1]))
+
+      if (idx < s.positions.length - 1) {
         s.rafId = requestAnimationFrame(tick)
       } else {
-        map.removeLayer(s.currentMover!)
-        const idx = s.movers.indexOf(s.currentMover!)
-        if (idx >= 0) s.movers.splice(idx, 1)
-        s.currentMover = null
-        s.segIdx++
-        s.step = 0
-        animateSegment()
+        // Remove mover, advance segment
+        if (s.currentMover) {
+          map.removeLayer(s.currentMover)
+          const mi = s.layers.indexOf(s.currentMover)
+          if (mi >= 0) s.layers.splice(mi, 1)
+          s.currentMover = null
+        }
+        s.segIdx++; s.step = 0
+        startSegment()
       }
     }
 
@@ -150,14 +207,12 @@ function RouteAnimator({ segments, playing, colorPrimary, onDone }: {
   return null
 }
 
+// --------------- Pin icons ---------------
+
 function makeIcon(label: string, isHome: boolean): L.DivIcon {
   const sz = isHome ? 32 : 28
-  const bg = isHome
-    ? 'linear-gradient(135deg, #faad14, #ffc53d)'
-    : T.gradient
-  const shadow = isHome
-    ? '0 3px 10px rgba(250,173,20,0.4)'
-    : `0 3px 10px ${T.shadow}`
+  const bg = isHome ? 'linear-gradient(135deg, #faad14, #ffc53d)' : T.gradient
+  const shadow = isHome ? '0 3px 10px rgba(250,173,20,0.4)' : `0 3px 10px ${T.shadow}`
   const fs = isHome ? 15 : 11
   return L.divIcon({
     className: '',
@@ -179,26 +234,27 @@ function makeIcon(label: string, isHome: boolean): L.DivIcon {
   })
 }
 
+// --------------- Main component ---------------
+
 export default function TripMap({ trip, spots, height = 400 }: Props) {
   const [provider] = useMapProvider()
   const [animState, setAnimState] = useState<'idle' | 'playing' | 'paused' | 'done'>('idle')
-  const colorPrimary = T.primary
 
-  const sorted = useMemo(() => sortSpots(spots).filter((s) => s.lat != null && s.lng != null), [spots])
+  const sorted = useMemo(() => sortSpots(spots).filter(s => s.lat != null && s.lng != null), [spots])
 
   const routePoints = useMemo(() => {
-    const points: { lat: number; lng: number; name: string; emoji: string; isHome: boolean }[] = []
+    const points: { lat: number; lng: number; name: string; emoji: string; isHome: boolean; transport?: string }[] = []
     if (trip.departureLat != null && trip.departureLng != null) {
       points.push({ lat: trip.departureLat, lng: trip.departureLng, name: trip.departureName ?? '出发地', emoji: '🏠', isHome: true })
     }
     for (const s of sorted) {
-      points.push({ lat: s.lat!, lng: s.lng!, name: s.name, emoji: getTransportEmoji(s.transport), isHome: false })
+      points.push({ lat: s.lat!, lng: s.lng!, name: s.name, emoji: getTransportEmoji(s.transport), isHome: false, transport: s.transport })
     }
     return points
   }, [trip.departureLat, trip.departureLng, trip.departureName, sorted])
 
   const displayPoints = useMemo(
-    () => routePoints.map((p) => {
+    () => routePoints.map(p => {
       const [lat, lng] = toDisplayCoord(p.lat, p.lng, provider)
       return { ...p, dLat: lat, dLng: lng }
     }),
@@ -206,18 +262,14 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
   )
 
   const displayCoords = useMemo<[number, number][]>(
-    () => displayPoints.map((p) => [p.dLat, p.dLng]),
-    [displayPoints],
+    () => displayPoints.map(p => [p.dLat, p.dLng]), [displayPoints],
   )
 
-  const segments = useMemo(() => {
-    const segs: { from: [number, number]; to: [number, number]; emoji: string }[] = []
-    for (let i = 0; i < displayPoints.length - 1; i++) {
-      const f = displayPoints[i]!, t = displayPoints[i + 1]!
-      segs.push({ from: [f.dLat, f.dLng], to: [t.dLat, t.dLng], emoji: t.emoji })
-    }
-    return segs
-  }, [displayPoints])
+  // Fetch real routes
+  const segmentRoutes = useRealRoutes(routePoints, provider)
+
+  // Flatten all segment routes into one polyline for static display
+  const fullRoute = useMemo(() => segmentRoutes.flatMap(r => r), [segmentRoutes])
 
   if (routePoints.length === 0) {
     return <Empty description="暂无坐标数据，添加打卡点时搜索位置即可在地图上显示" style={{ padding: 32 }} />
@@ -240,13 +292,13 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
         key={provider}
         center={center}
         zoom={12}
-        style={{ height, width: '100%', borderRadius: 8 }}
+        style={{ height, width: '100%', borderRadius: 12 }}
         zoomControl={true}
       >
         <MapTiles provider={provider} />
         <BoundsFitter coords={displayCoords} />
 
-        {/* Markers */}
+        {/* Pin markers */}
         {displayPoints.map((p, i) => (
           <Marker
             key={i}
@@ -257,43 +309,41 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
           </Marker>
         ))}
 
-        {/* Static route line (idle only) */}
-        {animState === 'idle' && displayCoords.length > 1 && (
+        {/* Static real route (idle / done) */}
+        {(animState === 'idle' || animState === 'done') && fullRoute.length > 1 && (
           <Polyline
-            positions={displayCoords}
-            pathOptions={{ color: colorPrimary, weight: 3, opacity: 0.5, dashArray: '8,6' }}
+            positions={fullRoute}
+            pathOptions={{ color: T.primary, weight: 4, opacity: 0.5, dashArray: '10,8' }}
           />
         )}
 
         {/* Animation layer */}
-        {(animState === 'playing' || animState === 'paused') && (
+        {(animState === 'playing' || animState === 'paused') && segmentRoutes.length > 0 && (
           <RouteAnimator
-            segments={segments}
+            segmentRoutes={segmentRoutes}
             playing={animState === 'playing'}
-            colorPrimary={colorPrimary}
             onDone={() => setAnimState('done')}
           />
         )}
       </MapContainer>
 
       {/* Play/Pause button */}
-      {segments.length > 0 && (
+      {segmentRoutes.length > 0 && (
         <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
           <Button
-            type="primary"
             icon={
               animState === 'playing' ? <PauseOutlined /> :
               animState === 'done' ? <ReloadOutlined /> :
-              animState === 'paused' ? <PlayCircleOutlined /> :
               <PlayCircleOutlined />
             }
             onClick={handleButtonClick}
             size="small"
             style={{
-              background: T.primary,
-              borderColor: T.primary,
-              color: '#fff',
-              boxShadow: `0 2px 8px ${T.shadow}`,
+              ...T.glassButton,
+              background: T.gradient,
+              color: '#fff', border: 'none', fontWeight: 600,
+              boxShadow: `0 3px 12px ${T.shadow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
+              height: 30, paddingInline: 12,
             }}
           >
             {animState === 'playing' ? '暂停' : animState === 'paused' ? '继续' : animState === 'done' ? '重播路线' : '播放路线'}
