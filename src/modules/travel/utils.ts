@@ -16,6 +16,10 @@ export const T = {
   gradientLight: 'linear-gradient(135deg, #FFF7E6, #FFE8D5)',
   gradientSubtle: 'linear-gradient(135deg, rgba(245,114,45,0.06), rgba(245,114,45,0.12))',
 
+  // Route line color (contrasts with map tiles)
+  route: '#2563EB',
+  routeLight: 'rgba(37, 99, 235, 0.5)',
+
   // Shadows
   shadow: 'rgba(245, 114, 45, 0.25)',
   shadowLight: 'rgba(245, 114, 45, 0.12)',

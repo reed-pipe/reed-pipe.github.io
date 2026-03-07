@@ -393,7 +393,7 @@ function FootprintAnimator({ markers, playing, provider, onDone }: {
       s.currentMover = L.marker([startPos[0], startPos[1]], { icon, zIndexOffset: 1000 }).addTo(map)
       s.layers.push(s.currentMover)
       s.currentLine = L.polyline([[startPos[0], startPos[1]]], {
-        color: T.primary, weight: 3.5, opacity: 0.85,
+        color: T.route, weight: 3.5, opacity: 0.85,
       }).addTo(map)
       s.layers.push(s.currentLine)
 
@@ -687,9 +687,9 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
           <RealRouteDisplay
             waypoints={highlightWaypoints}
             provider={provider}
-            color={T.primary}
+            color={T.route}
             weight={4}
-            opacity={0.55}
+            opacity={0.7}
             dashArray="10,8"
           />
         )}

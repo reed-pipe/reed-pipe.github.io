@@ -175,7 +175,7 @@ function RouteAnimator({ segmentRoutes, playing, onDone }: {
       const start = positions[0]!
       s.currentMover = L.marker([start[0], start[1]], { icon, zIndexOffset: 1000 }).addTo(map)
       s.layers.push(s.currentMover)
-      s.currentLine = L.polyline([[start[0], start[1]]], { color: T.primary, weight: 3.5, opacity: 0.9 }).addTo(map)
+      s.currentLine = L.polyline([[start[0], start[1]]], { color: T.route, weight: 3.5, opacity: 0.9 }).addTo(map)
       s.layers.push(s.currentLine)
       tick()
     }
@@ -325,7 +325,7 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
         {(animState === 'idle' || animState === 'done') && fullRoute.length > 1 && (
           <Polyline
             positions={fullRoute}
-            pathOptions={{ color: T.primary, weight: 4, opacity: 0.5, dashArray: '10,8' }}
+            pathOptions={{ color: T.route, weight: 4, opacity: 0.7, dashArray: '10,8' }}
           />
         )}
 
