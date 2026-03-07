@@ -9,7 +9,6 @@ import type { Trip } from '@/shared/db'
 import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
-import TravelYearMap from './components/TravelYearMap'
 import {
   exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange,
   sortTrips, getTripStatusLabel, T,
@@ -168,13 +167,6 @@ export default function Travel() {
                 <span style={{ fontWeight: 700, color: T.primary }}>{s.value}</span>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Travel Year Map (heatmap + bar chart) */}
-        {trips.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <TravelYearMap trips={trips} />
           </div>
         )}
 

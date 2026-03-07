@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { Trip, TripSpot } from '@/shared/db'
+import TravelYearMap from '@/modules/travel/components/TravelYearMap'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
@@ -283,6 +284,7 @@ function TravelSummaryCard({ trips, spots, onNavigate, isMobile }: {
       </div>
 
       {totalTrips > 0 ? (
+      <>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 20, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 16 }}>
             <div>
@@ -315,6 +317,12 @@ function TravelSummaryCard({ trips, spots, onNavigate, isMobile }: {
             </div>
           )}
         </div>
+
+        {/* Travel Year Heatmap */}
+        <div style={{ marginTop: 12 }} onClick={e => e.stopPropagation()}>
+          <TravelYearMap trips={trips} />
+        </div>
+      </>
       ) : (
         <Text type="secondary">还没有旅行记录，点击开始记录</Text>
       )}
