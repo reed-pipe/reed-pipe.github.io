@@ -12,7 +12,7 @@ import {
 } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { formatDateRange, tripDays, formatCost, compressImage } from '../utils'
+import { formatDateRange, tripDays, formatCost, compressImage, T } from '../utils'
 import { reverseGeocode } from '../geocode'
 import type React from 'react'
 import SpotTimeline from './SpotTimeline'
@@ -36,7 +36,9 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
   const [editingSpot, setEditingSpot] = useState<TripSpot | null>(null)
   const [quickData, setQuickData] = useState<SpotInitialData | null>(null)
   const db = useDb()
-  const { token: { colorPrimary, colorPrimaryBg, colorTextSecondary } } = theme.useToken()
+  const { token: { colorTextSecondary } } = theme.useToken()
+  const colorPrimary = T.primary
+  const colorPrimaryBg = T.primaryBg
 
   const days = tripDays(trip.startDate, trip.endDate)
   const spotCostTotal = spots.reduce((s, sp) => s + (sp.cost ?? 0), 0)
@@ -137,8 +139,8 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
             onClick={onEdit}
             style={{
               borderRadius: 10,
-              background: `${colorPrimary}08`,
-              color: colorPrimary,
+              background: T.primaryBg,
+              color: T.primary,
             }}
           />
           <Button
@@ -210,7 +212,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
                 padding: '3px 12px',
                 borderRadius: 14,
                 fontSize: 12,
-                background: `linear-gradient(135deg, ${colorPrimary}08, ${colorPrimary}15)`,
+                background: T.gradientLight,
                 color: colorPrimary,
                 fontWeight: 500,
               }}
@@ -243,10 +245,10 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
               padding: '5px 14px',
               fontSize: 13,
               borderRadius: 20,
-              background: `linear-gradient(135deg, ${colorPrimary}, ${colorPrimary}dd)`,
+              background: T.gradient,
               color: '#fff',
               cursor: 'pointer',
-              boxShadow: `0 2px 8px ${colorPrimary}40`,
+              boxShadow: `0 2px 8px ${T.shadow}`,
               fontWeight: 500,
             }}
           >
@@ -302,10 +304,10 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
       {trip.summary && (
         <div style={{
           padding: '14px 16px',
-          background: `linear-gradient(135deg, ${colorPrimaryBg}, #fff)`,
+          background: T.gradientLight,
           borderRadius: 16,
-          borderLeft: `3px solid ${colorPrimary}`,
-          boxShadow: `0 1px 4px ${colorPrimary}10`,
+          borderLeft: `3px solid ${T.primary}`,
+          boxShadow: `0 1px 4px ${T.shadowLight}`,
         }}>
           <Text style={{ fontSize: 11, color: colorTextSecondary, display: 'block', marginBottom: 6, fontWeight: 500 }}>
             ✍️ 旅行感想

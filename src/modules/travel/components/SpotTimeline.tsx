@@ -1,7 +1,7 @@
 import { Typography, Image, theme } from 'antd'
 import { EnvironmentOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import type { TripSpot } from '@/shared/db'
-import { groupSpotsByDate, formatCost, getTransportEmoji, getTransportLabel } from '../utils'
+import { groupSpotsByDate, formatCost, getTransportEmoji, getTransportLabel, T } from '../utils'
 
 const { Text, Paragraph } = Typography
 
@@ -12,7 +12,8 @@ interface Props {
 }
 
 export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props) {
-  const { token: { colorPrimary, colorPrimaryBg, colorTextSecondary, colorBgLayout } } = theme.useToken()
+  const { token: { colorTextSecondary, colorBgLayout } } = theme.useToken()
+  const colorPrimary = T.primary
   const grouped = groupSpotsByDate(spots)
 
   if (spots.length === 0) {
@@ -38,9 +39,9 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
             gap: 6,
             padding: '5px 14px',
             borderRadius: 20,
-            background: `linear-gradient(135deg, ${colorPrimaryBg}, ${colorPrimary}15)`,
+            background: T.gradientLight,
             marginBottom: 12,
-            boxShadow: `0 1px 4px ${colorPrimary}18`,
+            boxShadow: `0 1px 4px ${T.shadowLight}`,
           }}>
             <ClockCircleOutlined style={{ color: colorPrimary, fontSize: 12 }} />
             <Text strong style={{ fontSize: 13, color: colorPrimary }}>
@@ -58,7 +59,7 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
               top: 8,
               bottom: daySpots.length > 1 ? 8 : 0,
               width: 2,
-              background: daySpots.length > 1 ? `linear-gradient(${colorPrimary}40, ${colorPrimary}10)` : 'transparent',
+              background: daySpots.length > 1 ? `linear-gradient(${T.primary}40, ${T.primary}10)` : 'transparent',
               borderRadius: 1,
             }} />
 
@@ -92,7 +93,7 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
                       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = `0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px ${colorPrimary}20`
+                      e.currentTarget.style.boxShadow = `0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px ${T.primary}20`
                       e.currentTarget.style.transform = 'translateY(-1px)'
                     }}
                     onMouseLeave={(e) => {
@@ -113,7 +114,7 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot }: Props
                           fontSize: 11,
                           padding: '2px 10px',
                           borderRadius: 12,
-                          background: `linear-gradient(135deg, ${colorPrimary}08, ${colorPrimary}15)`,
+                          background: T.gradientLight,
                           color: colorPrimary,
                           fontWeight: 500,
                         }}>

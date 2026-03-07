@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Space, Select, Segmented, Typography, Grid, message, theme } from 'antd'
+import { Button, Space, Select, Segmented, Typography, Grid, message } from 'antd'
 import { PlusOutlined, DownloadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import 'leaflet/dist/leaflet.css'
@@ -9,7 +9,7 @@ import type { Trip } from '@/shared/db'
 import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
-import { exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange } from './utils'
+import { exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange, T } from './utils'
 import { useMapProviderPreference, setMapProvider } from './mapConfig'
 
 const { Text } = Typography
@@ -18,11 +18,11 @@ const { useBreakpoint } = Grid
 const PANEL_WIDTH = 360
 
 const glassPanel: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.92)',
-  backdropFilter: 'blur(16px)',
-  WebkitBackdropFilter: 'blur(16px)',
+  background: 'rgba(255,255,255,0.94)',
+  backdropFilter: 'blur(18px)',
+  WebkitBackdropFilter: 'blur(18px)',
   boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-  border: '1px solid rgba(255,255,255,0.6)',
+  border: '1px solid rgba(255,255,255,0.7)',
 }
 
 const glassButton: React.CSSProperties = {
@@ -37,7 +37,6 @@ export default function Travel() {
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
   const isMobile = !screens.md
-  const { token: { colorPrimary } } = theme.useToken()
 
   const [formOpen, setFormOpen] = useState(false)
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
@@ -80,10 +79,10 @@ export default function Travel() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `\u65C5\u884C\u8BB0\u5F55_${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `旅行记录_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    message.success('\u5BFC\u51FA\u6210\u529F')
+    message.success('导出成功')
   }
 
   const handleSelectTrip = (tripId: number) => {
@@ -101,9 +100,9 @@ export default function Travel() {
       <Segmented
         size="small"
         options={[
-          { label: '\u81EA\u52A8', value: 'auto' },
+          { label: '自动', value: 'auto' },
           { label: 'OSM', value: 'osm' },
-          { label: '\u9AD8\u5FB7', value: 'amap' },
+          { label: '高德', value: 'amap' },
         ]}
         value={mapPref}
         onChange={v => setMapProvider(v as 'auto' | 'osm' | 'amap')}
@@ -113,12 +112,19 @@ export default function Travel() {
           <Button icon={<DownloadOutlined />} size="small" onClick={handleExport} type="text" />
         )}
         <Button
-          type="primary"
           icon={<PlusOutlined />}
           size="small"
           onClick={() => { setEditingTrip(null); setFormOpen(true) }}
+          style={{
+            background: T.primary,
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            fontWeight: 600,
+            boxShadow: `0 2px 8px ${T.shadow}`,
+          }}
         >
-          {'\u65B0\u5EFA'}
+          新建
         </Button>
       </Space>
     </div>
@@ -144,18 +150,18 @@ export default function Travel() {
         {trips.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             {[
-              { label: '\u65C5\u884C', value: `${stats.totalTrips}\u6B21` },
-              { label: '\u76EE\u7684\u5730', value: `${stats.destinations}\u4E2A` },
-              { label: '\u5929\u6570', value: `${stats.totalDays}\u5929` },
-              { label: '\u6253\u5361', value: `${stats.totalSpots}\u4E2A` },
-              ...(stats.totalCost > 0 ? [{ label: '\u82B1\u8D39', value: formatCost(stats.totalCost) }] : []),
+              { label: '旅行', value: `${stats.totalTrips}次` },
+              { label: '目的地', value: `${stats.destinations}个` },
+              { label: '天数', value: `${stats.totalDays}天` },
+              { label: '打卡', value: `${stats.totalSpots}个` },
+              ...(stats.totalCost > 0 ? [{ label: '花费', value: formatCost(stats.totalCost) }] : []),
             ].map(s => (
               <div key={s.label} style={{
                 padding: '4px 10px', borderRadius: 20,
-                background: `${colorPrimary}08`, fontSize: 12, lineHeight: '18px',
+                background: T.primaryBg, fontSize: 12, lineHeight: '18px',
               }}>
                 <span style={{ color: '#999' }}>{s.label}</span>{' '}
-                <span style={{ fontWeight: 600, color: colorPrimary }}>{s.value}</span>
+                <span style={{ fontWeight: 600, color: T.primary }}>{s.value}</span>
               </div>
             ))}
           </div>
@@ -166,7 +172,7 @@ export default function Travel() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             {allTags.length > 0 && (
               <Select
-                placeholder={'\u6807\u7B7E'}
+                placeholder={'标签'}
                 allowClear
                 size="small"
                 style={{ minWidth: 90 }}
@@ -177,7 +183,7 @@ export default function Travel() {
             )}
             {allYears.length > 1 && (
               <Select
-                placeholder={'\u5E74\u4EFD'}
+                placeholder={'年份'}
                 allowClear
                 size="small"
                 style={{ minWidth: 75 }}
@@ -198,27 +204,27 @@ export default function Travel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filteredTrips.length > 0 ? filteredTrips.map(trip => {
             const days = tripDays(trip.startDate, trip.endDate)
-            const spotCount = allSpots.filter(s => s.tripId === trip.id).length
+            const tripSpotCount = allSpots.filter(s => s.tripId === trip.id).length
             const photoCount = allSpots.filter(s => s.tripId === trip.id).reduce((n, s) => n + s.photos.length, 0)
             return (
               <div
                 key={trip.id}
                 onClick={() => handleSelectTrip(trip.id!)}
                 style={{
-                  borderRadius: 16,
+                  borderRadius: 14,
                   cursor: 'pointer',
                   transition: 'all 0.25s ease',
                   background: '#fff',
                   border: '1px solid rgba(0,0,0,0.04)',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
                   overflow: 'hidden',
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.boxShadow = `0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px ${colorPrimary}20`
+                  e.currentTarget.style.boxShadow = `0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px ${T.primary}25`
                   e.currentTarget.style.transform = 'translateY(-1px)'
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'
+                  e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
@@ -228,7 +234,7 @@ export default function Travel() {
                     <img src={trip.coverPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div style={{
                       position: 'absolute', inset: 0,
-                      background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.15))',
+                      background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.2))',
                     }} />
                   </div>
                 )}
@@ -236,29 +242,29 @@ export default function Travel() {
                   {!trip.coverPhoto && (
                     <div style={{
                       width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                      background: `linear-gradient(135deg, ${colorPrimary}15, ${colorPrimary}08)`,
+                      background: T.gradientLight,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <span style={{ fontSize: 20, opacity: 0.6 }}>{'\uD83D\uDDFA\uFE0F'}</span>
+                      <span style={{ fontSize: 20, opacity: 0.6 }}>🗺️</span>
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {trip.title}
                     </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
                       <span style={{
                         fontSize: 11, padding: '1px 8px', borderRadius: 10,
-                        background: `${colorPrimary}10`, color: colorPrimary, fontWeight: 500,
+                        background: T.primaryBg, color: T.primary, fontWeight: 600,
                       }}>
                         {trip.destination}
                       </span>
                       <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: '#f5f5f5', color: '#888' }}>
-                        {days}{'\u5929'}
+                        {days}天
                       </span>
-                      {spotCount > 0 && (
+                      {tripSpotCount > 0 && (
                         <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: '#f5f5f5', color: '#888' }}>
-                          {spotCount}地点
+                          {tripSpotCount}地点
                         </span>
                       )}
                       {photoCount > 0 && (
@@ -279,12 +285,12 @@ export default function Travel() {
             )
           }) : trips.length > 0 ? (
             <div style={{ padding: 32, textAlign: 'center' }}>
-              <Text type="secondary">{'\u6CA1\u6709\u5339\u914D\u7684\u65C5\u884C'}</Text>
+              <Text type="secondary">没有匹配的旅行</Text>
             </div>
           ) : (
             <div style={{ padding: 48, textAlign: 'center' }}>
-              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.25 }}>{'\uD83C\uDF0D'}</div>
-              <Text type="secondary">{'\u8FD8\u6CA1\u6709\u65C5\u884C\u8BB0\u5F55'}</Text>
+              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.25 }}>🌍</div>
+              <Text type="secondary">还没有旅行记录</Text>
             </div>
           )}
         </div>

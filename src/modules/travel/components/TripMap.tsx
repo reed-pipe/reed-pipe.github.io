@@ -1,10 +1,10 @@
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react'
 import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
-import { Button, Empty, theme } from 'antd'
+import { Button, Empty } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined, PauseOutlined } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
-import { sortSpots, getTransportEmoji } from '../utils'
+import { sortSpots, getTransportEmoji, T } from '../utils'
 import { useMapProvider, toDisplayCoord } from '../mapConfig'
 import MapTiles from './MapTiles'
 
@@ -160,9 +160,9 @@ function makeIcon(label: string, size: number, bg: string, fontSize: number): L.
 }
 
 export default function TripMap({ trip, spots, height = 400 }: Props) {
-  const { token: { colorPrimary } } = theme.useToken()
   const [provider] = useMapProvider()
   const [animState, setAnimState] = useState<'idle' | 'playing' | 'paused' | 'done'>('idle')
+  const colorPrimary = T.primary
 
   const sorted = useMemo(() => sortSpots(spots).filter((s) => s.lat != null && s.lng != null), [spots])
 
@@ -274,7 +274,12 @@ export default function TripMap({ trip, spots, height = 400 }: Props) {
             }
             onClick={handleButtonClick}
             size="small"
-            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}
+            style={{
+              background: T.primary,
+              borderColor: T.primary,
+              color: '#fff',
+              boxShadow: `0 2px 8px ${T.shadow}`,
+            }}
           >
             {animState === 'playing' ? '暂停' : animState === 'paused' ? '继续' : animState === 'done' ? '重播路线' : '播放路线'}
           </Button>

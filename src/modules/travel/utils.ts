@@ -1,5 +1,20 @@
 import type { Trip, TripSpot, TransportType } from '@/shared/db'
 
+// Travel module theme colors (warm orange palette)
+export const T = {
+  primary: '#F5722D',
+  primaryHover: '#FF8C4A',
+  primaryBg: '#FFF7E6',
+  primaryLight: '#FFD8BF',
+  primaryDark: '#D4500A',
+  shadow: 'rgba(245, 114, 45, 0.25)',
+  shadowLight: 'rgba(245, 114, 45, 0.12)',
+  gradient: 'linear-gradient(135deg, #F5722D, #FF9A5C)',
+  gradientLight: 'linear-gradient(135deg, #FFF7E6, #FFE8D5)',
+  text: '#8C4A1E',
+  textLight: '#B87333',
+}
+
 /** 交通工具配置 */
 export const TRANSPORT_OPTIONS: { value: TransportType; label: string; emoji: string }[] = [
   { value: 'plane', label: '飞机', emoji: '✈️' },
