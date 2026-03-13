@@ -18,6 +18,10 @@ interface PlainData {
     bodyMeasurements?: Array<Record<string, unknown>>
     trips?: Array<Record<string, unknown>>
     tripSpots?: Array<Record<string, unknown>>
+    ledgers?: Array<Record<string, unknown>>
+    accCategories?: Array<Record<string, unknown>>
+    accTransactions?: Array<Record<string, unknown>>
+    accBudgets?: Array<Record<string, unknown>>
   }
 }
 
@@ -104,12 +108,16 @@ export async function pushData(
   dataGistId: string,
   username: string,
 ): Promise<void> {
-  const [kvItems, weightRecords, bodyMeasurements, trips, tripSpots] = await Promise.all([
+  const [kvItems, weightRecords, bodyMeasurements, trips, tripSpots, ledgers, accCategories, accTransactions, accBudgets] = await Promise.all([
     db.kv.toArray(),
     db.weightRecords.toArray(),
     db.bodyMeasurements.toArray(),
     db.trips.toArray(),
     db.tripSpots.toArray(),
+    db.ledgers.toArray(),
+    db.accCategories.toArray(),
+    db.accTransactions.toArray(),
+    db.accBudgets.toArray(),
   ])
 
   const { cleanTrips, cleanSpots, blob } = splitBlobs(
@@ -125,6 +133,10 @@ export async function pushData(
       bodyMeasurements: bodyMeasurements as unknown as Array<Record<string, unknown>>,
       trips: cleanTrips,
       tripSpots: cleanSpots,
+      ledgers: ledgers as unknown as Array<Record<string, unknown>>,
+      accCategories: accCategories as unknown as Array<Record<string, unknown>>,
+      accTransactions: accTransactions as unknown as Array<Record<string, unknown>>,
+      accBudgets: accBudgets as unknown as Array<Record<string, unknown>>,
     },
   }
 
@@ -202,12 +214,16 @@ export async function pullData(
 
   // For backward compat: old v1 data already has photos inline, mergeBlobs is a no-op
 
-  await db.transaction('rw', [db.kv, db.weightRecords, db.bodyMeasurements, db.trips, db.tripSpots], async () => {
+  await db.transaction('rw', [db.kv, db.weightRecords, db.bodyMeasurements, db.trips, db.tripSpots, db.ledgers, db.accCategories, db.accTransactions, db.accBudgets], async () => {
     await db.kv.clear()
     await db.weightRecords.clear()
     await db.bodyMeasurements.clear()
     await db.trips.clear()
     await db.tripSpots.clear()
+    await db.ledgers.clear()
+    await db.accCategories.clear()
+    await db.accTransactions.clear()
+    await db.accBudgets.clear()
 
     if (plain.tables.kv?.length) {
       await db.kv.bulkPut(plain.tables.kv)
@@ -223,6 +239,18 @@ export async function pullData(
     }
     if (spotsArr.length) {
       await db.tripSpots.bulkPut(spotsArr as never[])
+    }
+    if (plain.tables.ledgers?.length) {
+      await db.ledgers.bulkPut(plain.tables.ledgers as never[])
+    }
+    if (plain.tables.accCategories?.length) {
+      await db.accCategories.bulkPut(plain.tables.accCategories as never[])
+    }
+    if (plain.tables.accTransactions?.length) {
+      await db.accTransactions.bulkPut(plain.tables.accTransactions as never[])
+    }
+    if (plain.tables.accBudgets?.length) {
+      await db.accBudgets.bulkPut(plain.tables.accBudgets as never[])
     }
   })
 

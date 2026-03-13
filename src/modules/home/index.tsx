@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Typography, Progress, InputNumber, Button, Grid, message } from 'antd'
-import { HeartOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, FireOutlined, CheckCircleOutlined, EnvironmentOutlined } from '@ant-design/icons'
+import { HeartOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, FireOutlined, CheckCircleOutlined, EnvironmentOutlined, AccountBookOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import dayjs from 'dayjs'
@@ -273,6 +273,9 @@ export default function Home() {
         </Text>
       </SectionCard>
 
+      {/* Accounting summary */}
+      <AccountingSummaryCard onNavigate={() => navigate('/accounting')} isMobile={isMobile} />
+
       {/* Travel summary */}
       <TravelSummaryCard trips={trips} spots={allSpots} onNavigate={() => navigate('/travel')} isMobile={isMobile} />
     </div>
@@ -405,6 +408,159 @@ function TravelSummaryCard({ trips, spots, onNavigate, isMobile }: {
           <Text type="secondary" style={{ fontSize: 13 }}>还没有旅行记录，点击开始</Text>
         </div>
       )}
+    </SectionCard>
+  )
+}
+
+function AccountingSummaryCard({ onNavigate, isMobile }: { onNavigate: () => void; isMobile: boolean }) {
+  const db = useDb()
+  const today = dayjs()
+  const yearMonth = today.format('YYYY-MM')
+  const monthStart = `${yearMonth}-01`
+  const lastDay = new Date(today.year(), today.month() + 1, 0).getDate()
+  const monthEnd = `${yearMonth}-${String(lastDay).padStart(2, '0')}`
+
+  const transactions = useLiveQuery(
+    () => db.accTransactions.where('date').between(monthStart, monthEnd + '\uffff').toArray(),
+    [db, monthStart, monthEnd],
+  ) ?? []
+
+  const categories = useLiveQuery(() => db.accCategories.toArray(), [db]) ?? []
+
+  const budgets = useLiveQuery(
+    () => db.accBudgets.where('yearMonth').equals(yearMonth).toArray(),
+    [db, yearMonth],
+  ) ?? []
+
+  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const totalBudget = budgets.find(b => b.categoryId === null)
+
+  // Top 4 expense categories for mini donut
+  const catMap = new Map(categories.map(c => [c.id, c]))
+  const expByCat = new Map<number, number>()
+  for (const t of transactions) {
+    if (t.type === 'expense') {
+      expByCat.set(t.categoryId, (expByCat.get(t.categoryId) ?? 0) + t.amount)
+    }
+  }
+  const topCats = [...expByCat.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 4)
+    .map(([catId, amount]) => {
+      const cat = catMap.get(catId)
+      return { color: cat?.color ?? '#6B7280', amount, emoji: cat?.emoji ?? '💰', name: cat?.name ?? '其他' }
+    })
+
+  const formatAmt = (n: number) => {
+    if (n >= 10000) return `${(n / 10000).toFixed(1)}万`
+    return n % 1 === 0 ? String(n) : n.toFixed(2)
+  }
+
+  // Mini donut
+  const MiniDonut = () => {
+    const total = topCats.reduce((s, d) => s + d.amount, 0)
+    if (topCats.length === 0 || total === 0) return null
+    const size = 48
+    const r = 16
+    const cx = size / 2, cy = size / 2, sw = 8
+    // Single category: render full circle instead of arc
+    if (topCats.length === 1) {
+      return (
+        <svg width={size} height={size} style={{ display: 'block', flexShrink: 0 }}>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={topCats[0]!.color} strokeWidth={sw} />
+        </svg>
+      )
+    }
+    let startAngle = -90
+    return (
+      <svg width={size} height={size} style={{ display: 'block', flexShrink: 0 }}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F3F4F6" strokeWidth={sw} />
+        {topCats.map((d, i) => {
+          const angle = Math.max((d.amount / total) * 360 - 1.5, 0.5)
+          const s = (startAngle * Math.PI) / 180
+          const e = ((startAngle + angle) * Math.PI) / 180
+          const large = angle > 180 ? 1 : 0
+          const path = `M ${cx + r * Math.cos(s)} ${cy + r * Math.sin(s)} A ${r} ${r} 0 ${large} 1 ${cx + r * Math.cos(e)} ${cy + r * Math.sin(e)}`
+          startAngle += (d.amount / total) * 360
+          return <path key={i} d={path} fill="none" stroke={d.color} strokeWidth={sw} strokeLinecap="round" />
+        })}
+      </svg>
+    )
+  }
+
+  if (transactions.length === 0) {
+    return (
+      <SectionCard onClick={onNavigate}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 10,
+            background: 'linear-gradient(135deg, #DBEAFE, #BFDBFE)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <AccountBookOutlined style={{ color: colors.accent, fontSize: 15 }} />
+          </div>
+          <Text strong style={{ fontSize: 15 }}>记账</Text>
+        </div>
+        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>💰</div>
+          <Text type="secondary" style={{ fontSize: 13 }}>还没有记账记录，点击开始</Text>
+        </div>
+      </SectionCard>
+    )
+  }
+
+  return (
+    <SectionCard onClick={onNavigate}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 10,
+            background: 'linear-gradient(135deg, #DBEAFE, #BFDBFE)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <AccountBookOutlined style={{ color: colors.accent, fontSize: 15 }} />
+          </div>
+          <Text strong style={{ fontSize: 15 }}>记账</Text>
+        </div>
+        {totalBudget && (
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 10,
+            background: totalExpense > totalBudget.amount ? colors.dangerBg : colors.successBg,
+            color: totalExpense > totalBudget.amount ? colors.danger : colors.success,
+            fontWeight: 600,
+          }}>
+            预算 {Math.round((totalExpense / totalBudget.amount) * 100)}%
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 14 : 20 }}>
+        <div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: colors.danger, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+            {formatAmt(totalExpense)}
+            <span style={{ fontSize: 12, fontWeight: 500, marginLeft: 2, color: colors.textSecondary }}>支出</span>
+          </div>
+          {totalIncome > 0 && (
+            <div style={{ fontSize: 13, marginTop: 4, color: colors.success, fontWeight: 600 }}>
+              +{formatAmt(totalIncome)} 收入
+            </div>
+          )}
+        </div>
+
+        <MiniDonut />
+
+        {topCats.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11 }}>
+            {topCats.slice(0, 3).map(c => (
+              <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span>{c.emoji}</span>
+                <span style={{ color: colors.textSecondary }}>{formatAmt(c.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </SectionCard>
   )
 }

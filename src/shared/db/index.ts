@@ -69,12 +69,59 @@ export interface TripSpot {
   createdAt: number
 }
 
+export type TransactionType = 'expense' | 'income'
+
+export interface Ledger {
+  id: number
+  name: string
+  emoji: string
+  color: string
+  isDefault: boolean
+  sortOrder: number
+  createdAt: number
+}
+
+export interface AccCategory {
+  id: number
+  type: TransactionType
+  name: string
+  emoji: string
+  color: string
+  isCustom: boolean
+  sortOrder: number
+  createdAt: number
+}
+
+export interface AccTransaction {
+  id: number
+  ledgerId: number
+  type: TransactionType
+  categoryId: number
+  amount: number
+  note: string
+  tags: string[]
+  date: string // "YYYY-MM-DD"
+  createdAt: number
+}
+
+export interface AccBudget {
+  id: number
+  yearMonth: string // "2026-03"
+  categoryId: number | null // null = 月度总预算
+  amount: number
+  createdAt: number
+}
+
 export type AppDb = Dexie & {
   kv: EntityTable<KVItem, 'key'>
   weightRecords: EntityTable<WeightRecord, 'id'>
   bodyMeasurements: EntityTable<BodyMeasurement, 'id'>
   trips: EntityTable<Trip, 'id'>
   tripSpots: EntityTable<TripSpot, 'id'>
+  ledgers: EntityTable<Ledger, 'id'>
+  accCategories: EntityTable<AccCategory, 'id'>
+  accTransactions: EntityTable<AccTransaction, 'id'>
+  accBudgets: EntityTable<AccBudget, 'id'>
 }
 
 export function createDb(username: string): AppDb {
@@ -110,6 +157,19 @@ export function createDb(username: string): AppDb {
     bodyMeasurements: '++id, date, createdAt',
     trips: '++id, startDate, createdAt',
     tripSpots: '++id, tripId, date, createdAt',
+  })
+
+  // v6: accounting module
+  db.version(6).stores({
+    kv: 'key',
+    weightRecords: '++id, date, createdAt',
+    bodyMeasurements: '++id, date, createdAt',
+    trips: '++id, startDate, createdAt',
+    tripSpots: '++id, tripId, date, createdAt',
+    ledgers: '++id, sortOrder, createdAt',
+    accCategories: '++id, type, sortOrder, createdAt',
+    accTransactions: '++id, ledgerId, type, categoryId, date, createdAt, [ledgerId+date], [ledgerId+type+date]',
+    accBudgets: '++id, yearMonth, categoryId, createdAt, [yearMonth+categoryId]',
   })
 
   return db
