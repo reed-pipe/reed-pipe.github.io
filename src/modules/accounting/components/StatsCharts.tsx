@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, useRef } from 'react'
-import { Segmented, Empty, DatePicker, Typography } from 'antd'
+import { Segmented, Empty, DatePicker, Typography, Grid } from 'antd'
 import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
@@ -9,6 +9,7 @@ import { colors } from '@/shared/theme'
 
 const { RangePicker } = DatePicker
 const { Text } = Typography
+const { useBreakpoint } = Grid
 
 interface Props {
   ledgerId: number
@@ -227,6 +228,8 @@ function TrendChart({ data, type }: { data: { label: string; expense: number; in
 
 export default function StatsCharts({ ledgerId, yearMonth }: Props) {
   const db = useDb()
+  const screens = useBreakpoint()
+  const isMobile = !screens.md
   const [chartTab, setChartTab] = useState<ChartTab>('pie')
   const [txnType, setTxnType] = useState<TransactionType>('expense')
   const [dateRange, setDateRange] = useState<DateRange>('month')
@@ -304,20 +307,44 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
 
   const totalAmount = pieData.reduce((s, d) => s + d.amount, 0)
 
+  // On mobile, combine chart tab + type into a single row
+  const chartTabWithType = isMobile
+    ? [
+        { label: '支出饼图', value: 'pie-expense' },
+        { label: '收入饼图', value: 'pie-income' },
+        { label: '趋势', value: 'trend-expense' },
+        { label: '排行', value: 'rank-expense' },
+      ]
+    : null
+
+  const combinedValue = `${chartTab}-${txnType}`
+  const handleCombinedChange = (val: string) => {
+    const [tab, typ] = val.split('-') as [ChartTab, TransactionType]
+    setChartTab(tab)
+    if (typ) setTxnType(typ)
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 16 }}>
       {/* Date range selector */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <Segmented
           size="small"
           value={dateRange}
           onChange={v => setDateRange(v as DateRange)}
-          options={[
-            { label: '周', value: 'week' },
-            { label: '月', value: 'month' },
-            { label: '年', value: 'year' },
-            { label: '自定义', value: 'custom' },
-          ]}
+          options={isMobile
+            ? [
+                { label: '周', value: 'week' },
+                { label: '月', value: 'month' },
+                { label: '年', value: 'year' },
+              ]
+            : [
+                { label: '周', value: 'week' },
+                { label: '月', value: 'month' },
+                { label: '年', value: 'year' },
+                { label: '自定义', value: 'custom' },
+              ]
+          }
         />
         {dateRange === 'custom' && (
           <RangePicker
@@ -331,28 +358,40 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
         )}
       </div>
 
-      {/* Chart tab */}
-      <Segmented
-        block
-        value={chartTab}
-        onChange={v => setChartTab(v as ChartTab)}
-        options={[
-          { label: '分类饼图', value: 'pie' },
-          { label: '趋势折线', value: 'trend' },
-          { label: '分类排行', value: 'rank' },
-        ]}
-      />
-
-      {/* Type toggle for all chart types */}
-      <Segmented
-        size="small"
-        value={txnType}
-        onChange={v => setTxnType(v as TransactionType)}
-        options={[
-          { label: '支出', value: 'expense' },
-          { label: '收入', value: 'income' },
-        ]}
-      />
+      {/* Mobile: combined chart+type selector */}
+      {isMobile && chartTabWithType ? (
+        <Segmented
+          block
+          size="small"
+          value={combinedValue}
+          onChange={v => handleCombinedChange(v as string)}
+          options={chartTabWithType}
+        />
+      ) : (
+        <>
+          {/* Desktop: separate chart tab */}
+          <Segmented
+            block
+            value={chartTab}
+            onChange={v => setChartTab(v as ChartTab)}
+            options={[
+              { label: '分类饼图', value: 'pie' },
+              { label: '趋势折线', value: 'trend' },
+              { label: '分类排行', value: 'rank' },
+            ]}
+          />
+          {/* Desktop: separate type toggle */}
+          <Segmented
+            size="small"
+            value={txnType}
+            onChange={v => setTxnType(v as TransactionType)}
+            options={[
+              { label: '支出', value: 'expense' },
+              { label: '收入', value: 'income' },
+            ]}
+          />
+        </>
+      )}
 
       {/* Pie chart */}
       {chartTab === 'pie' && (

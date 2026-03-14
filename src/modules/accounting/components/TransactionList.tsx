@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Typography, Empty, Input, Popconfirm, message, Tag, Grid } from 'antd'
-import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { Typography, Empty, Input, Tag, Grid } from 'antd'
+import { SearchOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
-import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { AccTransaction } from '@/shared/db'
 import { groupTransactionsByDate, formatAmount, formatDateLabel, getWeekDay, getMonthRange } from '../utils'
-import { colors, shadows } from '@/shared/theme'
+import { colors } from '@/shared/theme'
 import QuickEntry from './QuickEntry'
 
 const { Text } = Typography
@@ -21,7 +20,6 @@ interface Props {
 
 export default function TransactionList({ ledgerId, yearMonth, filterDate, onClearFilter }: Props) {
   const db = useDb()
-  const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
   const isMobile = !screens.md
   const [search, setSearch] = useState('')
@@ -68,14 +66,8 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
 
   const groups = useMemo(() => groupTransactionsByDate(filtered), [filtered])
 
-  const handleDelete = async (id: number) => {
-    await db.accTransactions.delete(id)
-    notifyChanged()
-    message.success('已删除')
-  }
-
   return (
-    <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 8 : 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Filter indicator */}
       {filterDate && (
         <Tag
@@ -83,122 +75,116 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
           closable
           onClose={onClearFilter}
           closeIcon={<CloseCircleOutlined />}
-          style={{ alignSelf: 'flex-start', margin: 0, padding: '2px 10px', borderRadius: 8 }}
+          style={{ alignSelf: 'flex-start', margin: '0 0 8px 0', padding: '2px 10px', borderRadius: 8 }}
         >
           {formatDateLabel(filterDate)} {getWeekDay(filterDate)} 的记录
         </Tag>
       )}
 
-      {/* Search */}
+      {/* Search - subtle style */}
       <Input
         prefix={<SearchOutlined style={{ color: colors.textTertiary }} />}
-        placeholder="搜索备注、分类、标签..."
+        placeholder="搜索备注、分类..."
         value={search}
         onChange={e => setSearch(e.target.value)}
         allowClear
-        size={isMobile ? 'small' : 'middle'}
-        style={{ borderRadius: 12 }}
+        size="small"
+        variant="filled"
+        style={{
+          borderRadius: 20,
+          marginBottom: 12,
+          background: colors.bg,
+          fontSize: 13,
+        }}
       />
 
       {groups.length === 0 ? (
         <Empty description={search || filterDate ? '没有匹配的记录' : '本月暂无记录'} style={{ padding: 32 }} />
       ) : (
         groups.map(group => (
-          <div key={group.date}>
-            {/* Date header */}
+          <div key={group.date} style={{ marginBottom: isMobile ? 8 : 12 }}>
+            {/* Date header - simple text */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: isMobile ? '4px 2px' : '6px 4px',
-              marginBottom: isMobile ? 4 : 6,
+              padding: isMobile ? '8px 4px 4px' : '10px 4px 6px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Text strong style={{ fontSize: isMobile ? 13 : 14 }}>{formatDateLabel(group.date)}</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>{getWeekDay(group.date)}</Text>
+                <Text style={{ fontSize: isMobile ? 12 : 13, color: colors.textTertiary, fontWeight: 500 }}>
+                  {formatDateLabel(group.date)}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.textTertiary }}>{getWeekDay(group.date)}</Text>
               </div>
-              <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+              <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
                 {group.totalExpense > 0 && (
-                  <Text style={{ color: colors.danger }}>支 {formatAmount(group.totalExpense)}</Text>
+                  <Text style={{ color: colors.textTertiary }}>支出 {formatAmount(group.totalExpense)}</Text>
                 )}
                 {group.totalIncome > 0 && (
-                  <Text style={{ color: colors.success }}>收 {formatAmount(group.totalIncome)}</Text>
+                  <Text style={{ color: colors.textTertiary }}>收入 {formatAmount(group.totalIncome)}</Text>
                 )}
               </div>
             </div>
 
-            {/* Transactions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 3 : 4 }}>
-              {group.transactions.map(t => {
+            {/* Transactions - flat rows */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {group.transactions.map((t, idx) => {
                 const cat = catMap.get(t.categoryId)
+                const isLast = idx === group.transactions.length - 1
+                const primaryText = t.note || cat?.name || '未知'
+                const secondaryText = t.note ? (cat?.name || '未知') : null
+
                 return (
                   <div
                     key={t.id}
                     onClick={() => setEditing(t)}
                     style={{
                       display: 'flex', alignItems: 'center',
-                      gap: isMobile ? 8 : 12,
-                      padding: isMobile ? '10px 10px' : '12px 14px',
-                      borderRadius: 12,
-                      background: '#fff',
-                      border: `1px solid ${colors.borderLight}`,
-                      boxShadow: shadows.card,
+                      gap: isMobile ? 10 : 14,
+                      padding: isMobile ? '12px 4px' : '14px 4px',
+                      borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
                       cursor: 'pointer',
-                      transition: 'all 0.2s',
+                      transition: 'background 0.15s',
+                      borderRadius: 0,
                     }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#FAFAFA' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    {/* Category icon */}
+                    {/* Category icon - circle */}
                     <div style={{
-                      width: isMobile ? 34 : 40, height: isMobile ? 34 : 40,
-                      borderRadius: 10,
-                      background: `${cat?.color ?? '#6B7280'}12`,
+                      width: 36, height: 36,
+                      borderRadius: '50%',
+                      background: `${cat?.color ?? '#6B7280'}15`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: isMobile ? 17 : 20, flexShrink: 0,
+                      fontSize: 17, flexShrink: 0,
                     }}>
                       {cat?.emoji ?? '💰'}
                     </div>
 
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: isMobile ? 13 : 14, fontWeight: 500, display: 'block' }} ellipsis>
-                        {cat?.name ?? '未知'}
+                      <Text style={{
+                        fontSize: isMobile ? 14 : 15, fontWeight: 500, display: 'block',
+                        color: colors.text,
+                      }} ellipsis>
+                        {primaryText}
                       </Text>
-                      {t.note && (
-                        <Text type="secondary" style={{ fontSize: 11, display: 'block' }} ellipsis>
-                          {t.note}
+                      {secondaryText && (
+                        <Text style={{
+                          fontSize: 11, display: 'block',
+                          color: colors.textTertiary,
+                          marginTop: 1,
+                        }} ellipsis>
+                          {secondaryText}
                         </Text>
-                      )}
-                      {t.tags && t.tags.length > 0 && (
-                        <div style={{ display: 'flex', gap: 3, marginTop: 2, flexWrap: 'wrap' }}>
-                          {t.tags.map(tag => (
-                            <span key={tag} style={{
-                              fontSize: 9, padding: '1px 5px', borderRadius: 4,
-                              background: colors.bg, color: colors.textTertiary,
-                            }}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
                       )}
                     </div>
 
                     {/* Amount */}
-                    <Text strong style={{
-                      fontSize: isMobile ? 14 : 16, flexShrink: 0, fontWeight: 700,
-                      color: t.type === 'expense' ? colors.danger : colors.success,
+                    <Text style={{
+                      fontSize: isMobile ? 15 : 16, flexShrink: 0, fontWeight: 700,
+                      color: t.type === 'expense' ? colors.text : colors.success,
                     }}>
                       {t.type === 'expense' ? '-' : '+'}{formatAmount(t.amount)}
                     </Text>
-
-                    {/* Delete */}
-                    <Popconfirm
-                      title="确认删除？"
-                      onConfirm={(e) => { e?.stopPropagation(); handleDelete(t.id) }}
-                      onCancel={(e) => e?.stopPropagation()}
-                    >
-                      <DeleteOutlined
-                        onClick={e => e.stopPropagation()}
-                        style={{ color: colors.textTertiary, fontSize: 13, padding: 4 }}
-                      />
-                    </Popconfirm>
                   </div>
                 )
               })}

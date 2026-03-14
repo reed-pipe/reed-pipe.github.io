@@ -3,36 +3,18 @@ import { Grid } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { formatAmount, getMonthRange } from '../utils'
-import { colors, shadows } from '@/shared/theme'
+import { colors } from '@/shared/theme'
 
 const { useBreakpoint } = Grid
 
 interface Props {
   ledgerId: number
   yearMonth: string
+  /** When true, only show the 环比 comparison (used in index.tsx desktop mode) */
+  compactMode?: boolean
 }
 
-function StatCard({ title, value, color, compact }: { title: string; value: string; color: string; compact?: boolean }) {
-  return (
-    <div style={{
-      padding: compact ? '8px 10px' : '12px 14px',
-      borderRadius: compact ? 10 : 14,
-      background: '#fff',
-      border: `1px solid ${colors.borderLight}`,
-      boxShadow: shadows.card,
-      minWidth: 0,
-    }}>
-      <div style={{ fontSize: compact ? 10 : 11, color: colors.textTertiary, marginBottom: compact ? 2 : 4 }}>{title}</div>
-      <div style={{
-        fontSize: compact ? 18 : 22, fontWeight: 800, color, lineHeight: 1.1, letterSpacing: '-0.02em',
-      }}>
-        {value}
-      </div>
-    </div>
-  )
-}
-
-export default function MonthlySummary({ ledgerId, yearMonth }: Props) {
+export default function MonthlySummary({ ledgerId, yearMonth, compactMode }: Props) {
   const db = useDb()
   const screens = useBreakpoint()
   const isMobile = !screens.md
@@ -84,30 +66,69 @@ export default function MonthlySummary({ ledgerId, yearMonth }: Props) {
     ? Math.round(((expense - prevExpense) / prevExpense) * 100)
     : null
 
+  // compactMode: only show 环比 info (for desktop header)
+  if (compactMode) {
+    if (changePercent === null) return null
+    return (
+      <div style={{ fontSize: 12, color: colors.textTertiary }}>
+        较上月支出
+        <span style={{
+          color: changePercent > 0 ? colors.danger : colors.success,
+          fontWeight: 600,
+          marginLeft: 4,
+        }}>
+          {changePercent >= 0 ? '+' : ''}{changePercent}%
+        </span>
+      </div>
+    )
+  }
+
+  // Full display (standalone usage)
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: changePercent !== null
-        ? (isMobile ? 'repeat(4, 1fr)' : 'repeat(4, 1fr)')
-        : (isMobile ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)'),
-      gap: isMobile ? 6 : 8,
-      marginBottom: isMobile ? 4 : 8,
+      display: 'flex',
+      gap: isMobile ? 16 : 32,
+      padding: isMobile ? '10px 4px' : '12px 8px',
     }}>
-      <StatCard title="支出" value={formatAmount(expense)} color={colors.danger} compact={isMobile} />
-      <StatCard title="收入" value={formatAmount(income)} color={colors.success} compact={isMobile} />
-      <StatCard
-        title="结余"
-        value={balance === 0 ? '0' : (balance > 0 ? '+' : '-') + formatAmount(Math.abs(balance))}
-        color={balance > 0 ? colors.success : balance < 0 ? colors.danger : colors.textSecondary}
-        compact={isMobile}
-      />
-      {changePercent !== null && (
-        <StatCard
-          title="环比"
-          value={`${changePercent >= 0 ? '+' : ''}${changePercent}%`}
-          color={changePercent > 0 ? colors.danger : colors.success}
-          compact={isMobile}
-        />
+      <div>
+        <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>支出</div>
+        <div style={{
+          fontSize: isMobile ? 20 : 24, fontWeight: 800, color: colors.danger,
+          lineHeight: 1.1, letterSpacing: '-0.02em',
+        }}>
+          {formatAmount(expense)}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>收入</div>
+        <div style={{
+          fontSize: isMobile ? 20 : 24, fontWeight: 800, color: colors.success,
+          lineHeight: 1.1, letterSpacing: '-0.02em',
+        }}>
+          {formatAmount(income)}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>结余</div>
+        <div style={{
+          fontSize: isMobile ? 20 : 24, fontWeight: 800,
+          color: balance > 0 ? colors.success : balance < 0 ? colors.danger : colors.textSecondary,
+          lineHeight: 1.1, letterSpacing: '-0.02em',
+        }}>
+          {balance === 0 ? '0' : (balance > 0 ? '+' : '-') + formatAmount(Math.abs(balance))}
+        </div>
+      </div>
+      {changePercent !== null && !isMobile && (
+        <div>
+          <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>环比</div>
+          <div style={{
+            fontSize: isMobile ? 20 : 24, fontWeight: 800,
+            color: changePercent > 0 ? colors.danger : colors.success,
+            lineHeight: 1.1, letterSpacing: '-0.02em',
+          }}>
+            {changePercent >= 0 ? '+' : ''}{changePercent}%
+          </div>
+        </div>
       )}
     </div>
   )

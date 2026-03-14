@@ -197,7 +197,8 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
           >
             <span style={{ fontSize: isMobile ? 20 : 24 }}>{cat.emoji}</span>
             <span style={{
-              fontSize: isMobile ? 10 : 11,
+              fontSize: isMobile ? 11 : 11,
+              fontWeight: categoryId === cat.id ? 600 : 400,
               color: categoryId === cat.id ? cat.color : colors.textSecondary,
             }}>
               {cat.name}
@@ -312,7 +313,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
             : '0 4px 16px rgba(5,150,105,0.3)',
         }}
       >
-        {editingTransaction ? '更新' : '完成'}
+        {editingTransaction ? '更新' : `记一笔${parsedAmount && parsedAmount > 0 ? ` ¥${formatAmount(parsedAmount)}` : ''}`}
       </button>
     </div>
   )

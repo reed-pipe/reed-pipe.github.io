@@ -80,7 +80,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
   const CELL_SIZE = Math.floor((containerWidth - 6 * GAP) / 7)
   const WIDTH = 7 * CELL_SIZE + 6 * GAP
   const HEADER_H = isMobile ? 20 : 24
-  const ROW_H = isMobile ? Math.max(38, CELL_SIZE * 1.05) : Math.max(44, CELL_SIZE * 1.15)
+  const ROW_H = isMobile ? Math.max(34, CELL_SIZE * 0.95) : Math.max(44, CELL_SIZE * 1.15)
   const fontSize = CELL_SIZE < 40 ? 8 : 9
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六']

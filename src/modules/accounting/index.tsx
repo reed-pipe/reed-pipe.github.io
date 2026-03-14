@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Tabs, Button, Grid, Dropdown, Spin } from 'antd'
 import {
   PlusOutlined,
@@ -12,7 +12,7 @@ import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useAccountingStore } from './store'
-import { seedDefaultCategories, seedDefaultLedger } from './utils'
+import { seedDefaultCategories, seedDefaultLedger, formatAmount, getMonthRange } from './utils'
 import LedgerSelector from './components/LedgerSelector'
 import MonthlySummary from './components/MonthlySummary'
 import TransactionList from './components/TransactionList'
@@ -84,6 +84,30 @@ export default function Accounting() {
     if (key === 'export') setExportOpen(true)
   }
 
+  // Inline summary data
+  const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
+  const transactions = useLiveQuery(
+    () => db.accTransactions
+      .where('[ledgerId+date]')
+      .between([currentLedgerId, start], [currentLedgerId, end + '\uffff'])
+      .toArray(),
+    [db, currentLedgerId, start, end],
+  ) ?? []
+
+  const { income, expense } = useMemo(() => {
+    let income = 0, expense = 0
+    for (const t of transactions) {
+      if (t.type === 'income') income += t.amount
+      else expense += t.amount
+    }
+    return { income, expense }
+  }, [transactions])
+
+  const balance = income - expense
+
+  // Parse year/month for display
+  const [displayYear, displayMonth] = yearMonth.split('-')
+
   // Loading state
   if (!storeLoaded || ledgers.length === 0) {
     return (
@@ -98,41 +122,96 @@ export default function Accounting() {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
-      gap: isMobile ? 8 : 12,
       position: 'relative',
       paddingBottom: 80,
     }}>
-      {/* Header */}
+      {/* Hero header: month selector + summary */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 6,
+        padding: isMobile ? '16px 16px 14px' : '20px 20px 16px',
+        marginBottom: isMobile ? 4 : 8,
+        background: '#fff',
+        borderRadius: isMobile ? 0 : 16,
       }}>
-        <LedgerSelector value={currentLedgerId} onChange={setLedgerId} />
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button type="text" size="small" icon={<LeftOutlined />} onClick={prevMonth} />
-          <span style={{
-            fontSize: isMobile ? 14 : 15, fontWeight: 700, color: colors.text,
-            minWidth: 72, textAlign: 'center',
-          }}>
-            {yearMonth.replace('-', '年') + '月'}
-          </span>
-          <Button type="text" size="small" icon={<RightOutlined />} onClick={nextMonth} />
+        {/* Top row: ledger + settings */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 8,
+        }}>
+          <LedgerSelector value={currentLedgerId} onChange={setLedgerId} />
+          <Dropdown menu={{ items: settingsMenuItems, onClick: handleSettingsClick }}>
+            <Button type="text" size="small" icon={<SettingOutlined />} />
+          </Dropdown>
         </div>
 
-        <Dropdown menu={{ items: settingsMenuItems, onClick: handleSettingsClick }}>
-          <Button type="text" size="small" icon={<SettingOutlined />} />
-        </Dropdown>
-      </div>
+        {/* Month selector - big title style */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          marginBottom: isMobile ? 12 : 16,
+        }}>
+          <Button type="text" size="small" icon={<LeftOutlined />} onClick={prevMonth}
+            style={{ color: colors.textTertiary }} />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              fontSize: isMobile ? 24 : 28, fontWeight: 800, color: colors.text,
+              lineHeight: 1.1, letterSpacing: '-0.02em',
+            }}>
+              {Number(displayMonth)}月
+            </div>
+            <div style={{ fontSize: 11, color: colors.textTertiary }}>{displayYear}年</div>
+          </div>
+          <Button type="text" size="small" icon={<RightOutlined />} onClick={nextMonth}
+            style={{ color: colors.textTertiary }} />
+        </div>
 
-      {/* Monthly summary */}
-      <MonthlySummary ledgerId={currentLedgerId} yearMonth={yearMonth} />
+        {/* Inline summary: big numbers */}
+        <div style={{
+          display: 'flex',
+          gap: isMobile ? 16 : 32,
+        }}>
+          <div>
+            <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>支出</div>
+            <div style={{
+              fontSize: isMobile ? 20 : 24, fontWeight: 800, color: colors.danger,
+              lineHeight: 1.1, letterSpacing: '-0.02em',
+            }}>
+              {formatAmount(expense)}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>收入</div>
+            <div style={{
+              fontSize: isMobile ? 20 : 24, fontWeight: 800, color: colors.success,
+              lineHeight: 1.1, letterSpacing: '-0.02em',
+            }}>
+              {formatAmount(income)}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>结余</div>
+            <div style={{
+              fontSize: isMobile ? 20 : 24, fontWeight: 800,
+              color: balance > 0 ? colors.success : balance < 0 ? colors.danger : colors.textSecondary,
+              lineHeight: 1.1, letterSpacing: '-0.02em',
+            }}>
+              {balance === 0 ? '0' : (balance > 0 ? '+' : '-') + formatAmount(Math.abs(balance))}
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop: show MonthlySummary with 环比 */}
+        {!isMobile && (
+          <div style={{ marginTop: 12 }}>
+            <MonthlySummary ledgerId={currentLedgerId} yearMonth={yearMonth} compactMode />
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <Tabs
         activeKey={activeTab}
         onChange={key => { setActiveTab(key); if (key !== 'list') setFilterDate(null) }}
         size="small"
+        style={{ padding: isMobile ? '0 12px' : '0 4px' }}
         items={[
           {
             key: 'list',
