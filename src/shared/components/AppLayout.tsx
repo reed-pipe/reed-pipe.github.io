@@ -211,12 +211,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <Content
           style={{
-            margin: isMobile ? 8 : 20,
-            padding: isMobile ? 14 : 24,
-            background: '#fff',
-            borderRadius: 16,
+            margin: isMobile ? 0 : 20,
+            padding: isMobile ? '8px 12px 12px' : 24,
+            background: isMobile ? '#fff' : '#fff',
+            borderRadius: isMobile ? 0 : 16,
             minHeight: 280,
-            boxShadow: shadows.sm,
+            boxShadow: isMobile ? 'none' : shadows.sm,
           }}
         >
           {children}

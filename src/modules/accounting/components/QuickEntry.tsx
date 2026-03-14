@@ -74,6 +74,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   }, [categories, categoryId, editingTransaction])
 
   const parsedAmount = useMemo(() => parseCalcExpression(expression), [expression])
+  const hasOperator = /[+\-×÷]/.test(expression)
 
   const handleKeyPress = useCallback((key: string) => {
     if (key === '⌫') {
@@ -151,11 +152,19 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
     setTagInput('')
   }
 
+  const catCols = isMobile ? 5 : 4
+
   const content = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', maxHeight: isMobile ? 'calc(90vh - 60px)' : undefined }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      gap: isMobile ? 10 : 14,
+      overflowY: 'auto',
+      maxHeight: isMobile ? 'calc(90vh - 60px)' : undefined,
+    }}>
       {/* Type toggle */}
       <Segmented
         block
+        size={isMobile ? 'small' : 'middle'}
         value={type}
         onChange={v => { setType(v as TransactionType); setCategoryId(null) }}
         options={[
@@ -167,9 +176,9 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
       {/* Category grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 8,
-        maxHeight: 200,
+        gridTemplateColumns: `repeat(${catCols}, 1fr)`,
+        gap: 6,
+        maxHeight: isMobile ? 150 : 200,
         overflowY: 'auto',
       }}>
         {categories.map(cat => (
@@ -177,15 +186,20 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
             key={cat.id}
             onClick={() => setCategoryId(cat.id)}
             style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-              padding: '10px 4px', borderRadius: 12, cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: 2,
+              padding: isMobile ? '6px 2px' : '10px 4px',
+              borderRadius: 10, cursor: 'pointer',
               background: categoryId === cat.id ? `${cat.color}15` : colors.bg,
               border: `2px solid ${categoryId === cat.id ? cat.color : 'transparent'}`,
               transition: 'all 0.2s',
             }}
           >
-            <span style={{ fontSize: 24 }}>{cat.emoji}</span>
-            <span style={{ fontSize: 11, color: categoryId === cat.id ? cat.color : colors.textSecondary }}>
+            <span style={{ fontSize: isMobile ? 20 : 24 }}>{cat.emoji}</span>
+            <span style={{
+              fontSize: isMobile ? 10 : 11,
+              color: categoryId === cat.id ? cat.color : colors.textSecondary,
+            }}>
               {cat.name}
             </span>
           </div>
@@ -194,30 +208,32 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
 
       {/* Amount display */}
       <div style={{
-        padding: '12px 16px', borderRadius: 14,
+        padding: isMobile ? '8px 12px' : '12px 16px',
+        borderRadius: 12,
         background: type === 'expense' ? '#FEF2F2' : '#ECFDF5',
         textAlign: 'right',
       }}>
-        <div style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 4 }}>
-          {parsedAmount !== null && expression.match(/[+\-×÷]/) ? `= ${formatAmount(parsedAmount)}` : ''}
+        <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>
+          {parsedAmount !== null && hasOperator ? `= ${formatAmount(parsedAmount)}` : ''}
         </div>
         <div style={{
-          fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em',
+          fontSize: isMobile ? 26 : 32, fontWeight: 800, letterSpacing: '-0.02em',
           color: type === 'expense' ? colors.danger : colors.success,
-          minHeight: 42,
+          minHeight: isMobile ? 34 : 42,
         }}>
           {expression || '0'}
         </div>
       </div>
 
-      {/* Calculator keypad */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+      {/* Calculator keypad + = button */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: isMobile ? 4 : 6 }}>
         {CALC_KEYS.flat().map(key => (
           <button
             key={key}
             onClick={() => handleKeyPress(key)}
             style={{
-              height: 44, border: 'none', borderRadius: 10, fontSize: 18,
+              height: isMobile ? 38 : 44, border: 'none', borderRadius: 10,
+              fontSize: isMobile ? 16 : 18,
               fontWeight: '+-×÷'.includes(key) ? 700 : 500,
               background: '+-×÷'.includes(key) ? colors.primaryBg : key === '⌫' ? colors.dangerBg : '#fff',
               color: '+-×÷'.includes(key) ? colors.primary : key === '⌫' ? colors.danger : colors.text,
@@ -228,51 +244,68 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
             {key === '⌫' ? <DeleteOutlined /> : key}
           </button>
         ))}
+        {/* = button: only visible when expression has operators */}
+        {hasOperator && (
+          <button
+            onClick={() => handleKeyPress('=')}
+            style={{
+              gridColumn: '1 / -1',
+              height: isMobile ? 34 : 38,
+              border: 'none', borderRadius: 10,
+              fontSize: isMobile ? 14 : 16, fontWeight: 600,
+              background: colors.primaryBg, color: colors.primary,
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            }}
+          >
+            = {parsedAmount !== null ? formatAmount(parsedAmount) : ''}
+          </button>
+        )}
       </div>
 
-      {/* Note */}
-      <AutoComplete
-        value={note}
-        onChange={setNote}
-        options={noteHistory.filter(n => n.toLowerCase().includes(note.toLowerCase())).map(n => ({ value: n }))}
-        placeholder="添加备注..."
-        style={{ width: '100%' }}
-      />
+      {/* Note + Date row */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <AutoComplete
+          value={note}
+          onChange={setNote}
+          options={noteHistory.filter(n => n.toLowerCase().includes(note.toLowerCase())).map(n => ({ value: n }))}
+          placeholder="备注..."
+          style={{ flex: 1 }}
+          size={isMobile ? 'small' : 'middle'}
+        />
+        <DatePicker
+          value={date}
+          onChange={d => d && setDate(d)}
+          allowClear={false}
+          size={isMobile ? 'small' : 'middle'}
+          style={{ width: isMobile ? 110 : 130 }}
+        />
+      </div>
 
       {/* Tags */}
-      <div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: tags.length ? 8 : 0 }}>
-          {tags.map(t => (
-            <Tag key={t} closable onClose={() => setTags(tags.filter(x => x !== t))}>{t}</Tag>
-          ))}
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {tags.map(t => (
+          <Tag key={t} closable onClose={() => setTags(tags.filter(x => x !== t))} style={{ margin: 0 }}>{t}</Tag>
+        ))}
         <Input
           size="small"
           value={tagInput}
           onChange={e => setTagInput(e.target.value)}
           onPressEnter={handleAddTag}
-          placeholder="添加标签，回车确认"
-          style={{ width: 160 }}
+          placeholder="标签+回车"
+          style={{ width: 100 }}
         />
       </div>
-
-      {/* Date */}
-      <DatePicker
-        value={date}
-        onChange={d => d && setDate(d)}
-        allowClear={false}
-        style={{ width: '100%' }}
-      />
 
       {/* Submit */}
       <button
         onClick={handleSubmit}
         style={{
-          height: 48, border: 'none', borderRadius: 14,
+          height: isMobile ? 42 : 48, border: 'none', borderRadius: 14,
           background: type === 'expense'
             ? 'linear-gradient(135deg, #F5722D, #FF9A5C)'
             : 'linear-gradient(135deg, #059669, #34D399)',
-          color: '#fff', fontSize: 16, fontWeight: 700,
+          color: '#fff', fontSize: isMobile ? 15 : 16, fontWeight: 700,
           cursor: 'pointer',
           boxShadow: type === 'expense'
             ? '0 4px 16px rgba(245,114,45,0.3)'
@@ -294,7 +327,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
         onClose={onClose}
         placement="bottom"
         height="90vh"
-        styles={{ body: { paddingTop: 12 } }}
+        styles={{ body: { paddingTop: 8, paddingBottom: 8 } }}
       >
         {content}
       </Drawer>
@@ -307,7 +340,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
       open={open}
       onCancel={onClose}
       footer={null}
-      width={isMobile ? '92vw' : 420}
+      width={420}
     >
       {content}
     </Modal>

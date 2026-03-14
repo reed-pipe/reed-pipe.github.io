@@ -1,8 +1,11 @@
 import { useMemo, useState, useCallback, useRef } from 'react'
+import { Grid } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { getMonthRange, formatAmount } from '../utils'
 import { colors } from '@/shared/theme'
+
+const { useBreakpoint } = Grid
 
 interface Props {
   ledgerId: number
@@ -12,7 +15,10 @@ interface Props {
 
 export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Props) {
   const db = useDb()
+  const screens = useBreakpoint()
+  const isMobile = !screens.md
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const transactions = useLiveQuery(
     () => db.accTransactions
@@ -73,11 +79,16 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
   const GAP = 2
   const CELL_SIZE = Math.floor((containerWidth - 6 * GAP) / 7)
   const WIDTH = 7 * CELL_SIZE + 6 * GAP
-  const HEADER_H = 24
-  const ROW_H = Math.max(44, CELL_SIZE * 1.15)
+  const HEADER_H = isMobile ? 20 : 24
+  const ROW_H = isMobile ? Math.max(38, CELL_SIZE * 1.05) : Math.max(44, CELL_SIZE * 1.15)
   const fontSize = CELL_SIZE < 40 ? 8 : 9
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+
+  const handleDateClick = (dateStr: string) => {
+    setSelectedDate(dateStr)
+    onSelectDate?.(dateStr)
+  }
 
   return (
     <div ref={measuredRef} style={{ width: '100%' }}>
@@ -91,9 +102,9 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
           <text
             key={w}
             x={i * (CELL_SIZE + GAP) + CELL_SIZE / 2}
-            y={14}
+            y={HEADER_H - 6}
             textAnchor="middle"
-            fontSize={12}
+            fontSize={isMobile ? 11 : 12}
             fill={colors.textTertiary}
           >
             {w}
@@ -107,32 +118,33 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
             const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const sums = dailySums.get(dateStr)
             const isToday = dateStr === today
+            const isSelected = dateStr === selectedDate
             const x = di * (CELL_SIZE + GAP)
             const y = HEADER_H + wi * (ROW_H + GAP)
 
             return (
               <g
                 key={`${wi}-${di}`}
-                onClick={() => onSelectDate?.(dateStr)}
+                onClick={() => handleDateClick(dateStr)}
                 style={{ cursor: 'pointer' }}
               >
                 <rect
                   x={x} y={y}
                   width={CELL_SIZE} height={ROW_H}
                   rx={8} ry={8}
-                  fill={isToday ? `${colors.primary}10` : sums ? '#FAFAFA' : 'transparent'}
-                  stroke={isToday ? colors.primary : 'transparent'}
-                  strokeWidth={isToday ? 1.5 : 0}
+                  fill={isSelected ? `${colors.primary}18` : isToday ? `${colors.primary}10` : sums ? '#FAFAFA' : 'transparent'}
+                  stroke={isSelected ? colors.primary : isToday ? colors.primary : 'transparent'}
+                  strokeWidth={isSelected ? 2 : isToday ? 1.5 : 0}
                 />
 
                 {/* Day number */}
                 <text
                   x={x + CELL_SIZE / 2}
-                  y={y + 15}
+                  y={y + (isMobile ? 13 : 15)}
                   textAnchor="middle"
-                  fontSize={13}
-                  fontWeight={isToday ? 700 : 400}
-                  fill={isToday ? colors.primary : colors.text}
+                  fontSize={isMobile ? 12 : 13}
+                  fontWeight={isToday || isSelected ? 700 : 400}
+                  fill={isSelected ? colors.primary : isToday ? colors.primary : colors.text}
                 >
                   {day}
                 </text>
@@ -167,6 +179,10 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
           }),
         )}
       </svg>
+      {/* Hint */}
+      <div style={{ textAlign: 'center', fontSize: 11, color: colors.textTertiary, marginTop: 6 }}>
+        点击日期查看当日明细
+      </div>
     </div>
   )
 }

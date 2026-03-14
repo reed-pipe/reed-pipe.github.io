@@ -1,26 +1,30 @@
 import { useMemo } from 'react'
+import { Grid } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { formatAmount, getMonthRange } from '../utils'
 import { colors, shadows } from '@/shared/theme'
+
+const { useBreakpoint } = Grid
 
 interface Props {
   ledgerId: number
   yearMonth: string
 }
 
-function StatCard({ title, value, color }: { title: string; value: string; color: string }) {
+function StatCard({ title, value, color, compact }: { title: string; value: string; color: string; compact?: boolean }) {
   return (
     <div style={{
-      padding: '12px 14px', borderRadius: 14,
+      padding: compact ? '8px 10px' : '12px 14px',
+      borderRadius: compact ? 10 : 14,
       background: '#fff',
       border: `1px solid ${colors.borderLight}`,
       boxShadow: shadows.card,
       minWidth: 0,
     }}>
-      <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: compact ? 10 : 11, color: colors.textTertiary, marginBottom: compact ? 2 : 4 }}>{title}</div>
       <div style={{
-        fontSize: 22, fontWeight: 800, color, lineHeight: 1.1, letterSpacing: '-0.02em',
+        fontSize: compact ? 18 : 22, fontWeight: 800, color, lineHeight: 1.1, letterSpacing: '-0.02em',
       }}>
         {value}
       </div>
@@ -30,6 +34,8 @@ function StatCard({ title, value, color }: { title: string; value: string; color
 
 export default function MonthlySummary({ ledgerId, yearMonth }: Props) {
   const db = useDb()
+  const screens = useBreakpoint()
+  const isMobile = !screens.md
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
 
   const transactions = useLiveQuery(
@@ -81,22 +87,26 @@ export default function MonthlySummary({ ledgerId, yearMonth }: Props) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-      gap: 8,
-      marginBottom: 8,
+      gridTemplateColumns: changePercent !== null
+        ? (isMobile ? 'repeat(4, 1fr)' : 'repeat(4, 1fr)')
+        : (isMobile ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)'),
+      gap: isMobile ? 6 : 8,
+      marginBottom: isMobile ? 4 : 8,
     }}>
-      <StatCard title="支出" value={formatAmount(expense)} color={colors.danger} />
-      <StatCard title="收入" value={formatAmount(income)} color={colors.success} />
+      <StatCard title="支出" value={formatAmount(expense)} color={colors.danger} compact={isMobile} />
+      <StatCard title="收入" value={formatAmount(income)} color={colors.success} compact={isMobile} />
       <StatCard
         title="结余"
         value={balance === 0 ? '0' : (balance > 0 ? '+' : '-') + formatAmount(Math.abs(balance))}
         color={balance > 0 ? colors.success : balance < 0 ? colors.danger : colors.textSecondary}
+        compact={isMobile}
       />
       {changePercent !== null && (
         <StatCard
-          title="环比支出"
+          title="环比"
           value={`${changePercent >= 0 ? '+' : ''}${changePercent}%`}
           color={changePercent > 0 ? colors.danger : colors.success}
+          compact={isMobile}
         />
       )}
     </div>
