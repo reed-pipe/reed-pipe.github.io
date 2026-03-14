@@ -1,12 +1,12 @@
-import { useState, useMemo } from 'react'
-import { Typography, Modal, Drawer, InputNumber, Button, message, Grid } from 'antd'
-import { SettingOutlined, CopyOutlined } from '@ant-design/icons'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { Grid, message } from 'antd'
+import { CloseOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import { getMonthRange, formatAmount } from '../utils'
 
-const { Text } = Typography
+const { useBreakpoint } = Grid
 
 interface Props {
   ledgerId: number
@@ -19,16 +19,37 @@ function budgetColor(percent: number): string {
   return '#18181B'
 }
 
-const { useBreakpoint } = Grid
-
 export default function BudgetManager({ ledgerId, yearMonth }: Props) {
   const db = useDb()
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
   const isMobile = !screens.md
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [totalBudgetInput, setTotalBudgetInput] = useState<number | null>(null)
-  const [categoryBudgets, setCategoryBudgets] = useState<Record<number, number | null>>({})
+  const [totalBudgetInput, setTotalBudgetInput] = useState('')
+  const [categoryBudgets, setCategoryBudgets] = useState<Record<number, string>>({})
+
+  // Animation
+  const [mounted, setMounted] = useState(false)
+  const [visible, setVisible] = useState(false)
+  const closingRef = useRef(false)
+
+  useEffect(() => {
+    if (settingsOpen) {
+      closingRef.current = false
+      setMounted(true)
+      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)))
+    } else {
+      setVisible(false)
+      setMounted(false)
+    }
+  }, [settingsOpen])
+
+  const handleCloseSettings = useCallback(() => {
+    if (closingRef.current) return
+    closingRef.current = true
+    setVisible(false)
+    setTimeout(() => { setMounted(false); setSettingsOpen(false) }, 350)
+  }, [])
 
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
 
@@ -37,7 +58,6 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
     [db, yearMonth],
   ) ?? []
 
-  // Previous month budgets for "copy from last month"
   const prevMonthKey = useMemo(() => {
     const [y, m] = yearMonth.split('-').map(Number) as [number, number]
     const pm = m === 1 ? 12 : m - 1
@@ -86,70 +106,54 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
   }, [transactions])
 
   const openSettings = () => {
-    setTotalBudgetInput(totalBudget?.amount ?? null)
-    const cb: Record<number, number | null> = {}
+    setTotalBudgetInput(totalBudget?.amount?.toString() ?? '')
+    const cb: Record<number, string> = {}
     for (const cat of categories) {
-      cb[cat.id] = categoryBudgetMap.get(cat.id) ?? null
+      const v = categoryBudgetMap.get(cat.id)
+      cb[cat.id] = v ? v.toString() : ''
     }
     setCategoryBudgets(cb)
     setSettingsOpen(true)
   }
 
   const handleCopyFromLastMonth = () => {
-    if (prevBudgets.length === 0) {
-      message.warning('上月没有预算记录')
-      return
-    }
+    if (prevBudgets.length === 0) { message.warning('上月没有预算记录'); return }
     const prevTotal = prevBudgets.find(b => b.categoryId === null)
-    if (prevTotal) setTotalBudgetInput(prevTotal.amount)
-    const cb: Record<number, number | null> = { ...categoryBudgets }
+    if (prevTotal) setTotalBudgetInput(prevTotal.amount.toString())
+    const cb: Record<number, string> = { ...categoryBudgets }
     for (const b of prevBudgets) {
-      if (b.categoryId !== null) cb[b.categoryId] = b.amount
+      if (b.categoryId !== null) cb[b.categoryId] = b.amount.toString()
     }
     setCategoryBudgets(cb)
     message.success('已复制上月预算')
   }
 
   const handleSave = async () => {
-    // Save total budget
+    const totalVal = parseFloat(totalBudgetInput)
     const existingTotal = budgets.find(b => b.categoryId === null)
-    if (totalBudgetInput && totalBudgetInput > 0) {
+    if (totalVal > 0) {
       if (existingTotal) {
-        await db.accBudgets.update(existingTotal.id, { amount: totalBudgetInput })
+        await db.accBudgets.update(existingTotal.id, { amount: totalVal })
       } else {
-        await db.accBudgets.add({
-          yearMonth,
-          categoryId: null,
-          amount: totalBudgetInput,
-          createdAt: Date.now(),
-        })
+        await db.accBudgets.add({ yearMonth, categoryId: null, amount: totalVal, createdAt: Date.now() })
       }
     } else if (existingTotal) {
       await db.accBudgets.delete(existingTotal.id)
     }
 
-    // Save category budgets
     for (const cat of categories) {
-      const amount = categoryBudgets[cat.id]
+      const amount = parseFloat(categoryBudgets[cat.id] ?? '')
       const existing = budgets.find(b => b.categoryId === cat.id)
-      if (amount && amount > 0) {
-        if (existing) {
-          await db.accBudgets.update(existing.id, { amount })
-        } else {
-          await db.accBudgets.add({
-            yearMonth,
-            categoryId: cat.id,
-            amount,
-            createdAt: Date.now(),
-          })
-        }
+      if (amount > 0) {
+        if (existing) await db.accBudgets.update(existing.id, { amount })
+        else await db.accBudgets.add({ yearMonth, categoryId: cat.id, amount, createdAt: Date.now() })
       } else if (existing) {
         await db.accBudgets.delete(existing.id)
       }
     }
 
     notifyChanged()
-    setSettingsOpen(false)
+    handleCloseSettings()
     message.success('预算已保存')
   }
 
@@ -157,46 +161,55 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
   const totalRemaining = totalBudget ? totalBudget.amount - totalExpense : 0
 
   return (
-    <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 16 }}>
       {/* Settings button */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button icon={<SettingOutlined />} onClick={openSettings} size="small">
-          设置预算
-        </Button>
+        <button onClick={openSettings} style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 14px', borderRadius: 10, border: '1px solid #E4E4E7',
+          background: '#fff', fontSize: 13, fontWeight: 600, color: '#18181B',
+          cursor: 'pointer',
+        }}>
+          ⚙️ 设置预算
+        </button>
       </div>
 
       {!totalBudget ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0',
-          background: '#fff', borderRadius: 16, border: '1px solid #F4F4F5',
+          background: '#fff', borderRadius: 24, border: '1px solid #F4F4F5',
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}>
           <div style={{
             width: 56, height: 56, borderRadius: '50%', background: '#FAFAFA',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 12, fontSize: 24,
+            marginBottom: 12, fontSize: 28,
           }}>
             💰
           </div>
           <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA', marginBottom: 16 }}>暂未设置预算</span>
-          <Button type="primary" onClick={openSettings}>设置预算</Button>
+          <button onClick={openSettings} style={{
+            background: '#18181B', color: '#fff', borderRadius: 12,
+            padding: '10px 24px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+          }}>
+            设置预算
+          </button>
         </div>
       ) : (
         <>
           {/* Total budget card */}
           <div style={{
-            padding: isMobile ? 14 : 20, borderRadius: 16,
-            background: '#fff',
-            border: '1px solid #F4F4F5',
+            padding: isMobile ? 16 : 20, borderRadius: 20,
+            background: '#fff', border: '1px solid #F4F4F5',
             boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <Text strong style={{ fontSize: isMobile ? 14 : 15, color: '#18181B' }}>月度总预算</Text>
-              <Text style={{ fontSize: 13, color: '#A1A1AA' }}>
-                {formatAmount(totalBudget.amount)}
-              </Text>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#18181B' }}>月度总预算</span>
+              <span style={{ fontSize: 13, color: '#A1A1AA' }}>
+                ¥{formatAmount(totalBudget.amount)}
+              </span>
             </div>
-            <div style={{ height: isMobile ? 12 : 16, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: 12, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden', marginBottom: 10 }}>
               <div style={{
                 height: '100%', borderRadius: 9999,
                 background: budgetColor(totalPercent),
@@ -205,16 +218,15 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
               }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 12, color: '#18181B' }}>
-                已花 {formatAmount(totalExpense)} ({totalPercent}%)
-              </Text>
-              <Text style={{
-                fontSize: 12,
+              <span style={{ fontSize: 12, color: '#71717A' }}>
+                已花 ¥{formatAmount(totalExpense)} ({totalPercent}%)
+              </span>
+              <span style={{
+                fontSize: 12, fontWeight: 600,
                 color: totalRemaining >= 0 ? '#10B981' : '#EF4444',
-                fontWeight: 600,
               }}>
-                {totalRemaining >= 0 ? `剩余 ${formatAmount(totalRemaining)}` : `超支 ${formatAmount(-totalRemaining)}`}
-              </Text>
+                {totalRemaining >= 0 ? `剩余 ¥${formatAmount(totalRemaining)}` : `超支 ¥${formatAmount(-totalRemaining)}`}
+              </span>
             </div>
           </div>
 
@@ -227,22 +239,26 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
 
             return (
               <div key={cat.id} style={{
-                padding: isMobile ? '10px 12px' : '14px 16px',
-                borderRadius: 16,
-                background: '#fff',
+                padding: isMobile ? '12px 14px' : '14px 16px',
+                borderRadius: 16, background: '#fff',
                 border: '1px solid #F4F4F5',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: isMobile ? 16 : 18 }}>{cat.emoji}</span>
-                    <Text style={{ fontSize: 13, fontWeight: 500, color: '#18181B' }}>{cat.name}</Text>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 10, background: '#F4F4F5',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+                    }}>
+                      {cat.emoji}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>{cat.name}</span>
                   </div>
-                  <Text style={{ fontSize: 11, color: '#71717A' }}>
-                    {formatAmount(spent)} / {formatAmount(budget)}
-                  </Text>
+                  <span style={{ fontSize: 12, color: '#71717A' }}>
+                    ¥{formatAmount(spent)} / ¥{formatAmount(budget)}
+                  </span>
                 </div>
-                <div style={{ height: isMobile ? 8 : 10, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden' }}>
+                <div style={{ height: 8, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden' }}>
                   <div style={{
                     height: '100%', borderRadius: 9999,
                     background: budgetColor(percent),
@@ -250,99 +266,145 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
                     transition: 'width 0.6s ease',
                   }} />
                 </div>
-                <Text style={{
-                  fontSize: 11, marginTop: 3, display: 'block',
+                <span style={{
+                  fontSize: 11, marginTop: 4, display: 'block',
                   color: remaining >= 0 ? '#A1A1AA' : '#EF4444',
                 }}>
-                  {remaining >= 0 ? `剩余 ${formatAmount(remaining)}` : `超支 ${formatAmount(-remaining)}`}
-                </Text>
+                  {remaining >= 0 ? `剩余 ¥${formatAmount(remaining)}` : `超支 ¥${formatAmount(-remaining)}`}
+                </span>
               </div>
             )
           })}
         </>
       )}
 
-      {/* Settings modal / drawer */}
-      {(() => {
-        const settingsContent = (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Copy from last month */}
-            {prevBudgets.length > 0 && (
-              <Button
-                type="dashed"
-                icon={<CopyOutlined />}
-                block
-                onClick={handleCopyFromLastMonth}
-                size="small"
-              >
-                复制上月预算
-              </Button>
-            )}
-
-            <div>
-              <Text strong style={{ display: 'block', marginBottom: 6 }}>月度总预算</Text>
-              <InputNumber
-                value={totalBudgetInput}
-                onChange={v => setTotalBudgetInput(v)}
-                min={0}
-                step={100}
-                placeholder="不限"
-                style={{ width: '100%' }}
-                prefix="¥"
-              />
+      {/* Settings bottom sheet */}
+      {mounted && (
+        <>
+          <div
+            onClick={handleCloseSettings}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1000,
+              background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+              opacity: visible ? 1 : 0, transition: 'opacity 0.3s ease',
+            }}
+          />
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1001,
+            background: '#fff', borderRadius: '24px 24px 0 0',
+            maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 -10px 40px rgba(0,0,0,0.1)', overflow: 'hidden',
+            transform: visible ? 'translateY(0)' : 'translateY(100%)',
+            transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+          }}>
+            {/* Drag handle */}
+            <div onClick={handleCloseSettings} style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px', flexShrink: 0 }}>
+              <div style={{ width: 40, height: 5, borderRadius: 3, background: '#E4E4E7' }} />
             </div>
 
-            <Text strong>分类预算（可选）</Text>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: isMobile ? undefined : 280, overflowY: isMobile ? undefined : 'auto' }}>
-              {categories.map(cat => (
-                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16, width: 22 }}>{cat.emoji}</span>
-                  <Text style={{ fontSize: 13, width: 50 }}>{cat.name}</Text>
-                  <InputNumber
-                    value={categoryBudgets[cat.id]}
-                    onChange={v => setCategoryBudgets({ ...categoryBudgets, [cat.id]: v })}
-                    min={0}
-                    step={100}
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0 20px 12px', flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 17, fontWeight: 700, color: '#18181B' }}>设置预算</span>
+              <button onClick={handleCloseSettings} style={{
+                width: 32, height: 32, borderRadius: '50%', border: 'none',
+                background: '#F4F4F5', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
+              }}>
+                <CloseOutlined style={{ fontSize: 14 }} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 8px' }}>
+              {/* Copy from last month */}
+              {prevBudgets.length > 0 && (
+                <button onClick={handleCopyFromLastMonth} style={{
+                  width: '100%', padding: '10px 0', borderRadius: 12,
+                  border: '1.5px dashed #E4E4E7', background: 'transparent',
+                  fontSize: 13, fontWeight: 600, color: '#71717A', cursor: 'pointer',
+                  marginBottom: 16,
+                }}>
+                  📋 复制上月预算
+                </button>
+              )}
+
+              {/* Total budget */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#18181B', marginBottom: 8 }}>
+                  月度总预算
+                </label>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: '#FAFAFA', borderRadius: 14, padding: '12px 14px',
+                  border: '1px solid #F4F4F5',
+                }}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: '#A1A1AA' }}>¥</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={totalBudgetInput}
+                    onChange={e => setTotalBudgetInput(e.target.value)}
                     placeholder="不限"
-                    style={{ flex: 1 }}
-                    size="small"
-                    prefix="¥"
+                    style={{
+                      flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                      fontSize: 18, fontWeight: 600, color: '#18181B',
+                    }}
                   />
                 </div>
-              ))}
+              </div>
+
+              {/* Category budgets */}
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#18181B', marginBottom: 12 }}>
+                分类预算
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {categories.map(cat => (
+                  <div key={cat.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: '#FAFAFA', borderRadius: 12, padding: '8px 12px',
+                    border: '1px solid #F4F4F5',
+                  }}>
+                    <span style={{ fontSize: 18 }}>{cat.emoji}</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#18181B', width: 48 }}>{cat.name}</span>
+                    <div style={{
+                      flex: 1, display: 'flex', alignItems: 'center', gap: 4,
+                      background: '#fff', borderRadius: 10, padding: '6px 10px',
+                      border: '1px solid #F4F4F5',
+                    }}>
+                      <span style={{ fontSize: 13, color: '#A1A1AA' }}>¥</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={categoryBudgets[cat.id] ?? ''}
+                        onChange={e => setCategoryBudgets({ ...categoryBudgets, [cat.id]: e.target.value })}
+                        placeholder="不限"
+                        style={{
+                          flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                          fontSize: 14, fontWeight: 500, color: '#18181B', width: 0,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {isMobile && (
-              <Button type="primary" block onClick={handleSave} style={{ marginTop: 8 }}>
+            {/* Save button */}
+            <div style={{ flexShrink: 0, padding: '12px 20px', paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+              <button onClick={handleSave} style={{
+                width: '100%', height: 48, borderRadius: 14, border: 'none',
+                background: '#18181B', color: '#fff', fontSize: 16, fontWeight: 700,
+                cursor: 'pointer', boxShadow: '0 4px 12px rgba(24,24,27,0.2)',
+              }}>
                 保存
-              </Button>
-            )}
+              </button>
+            </div>
           </div>
-        )
-
-        return isMobile ? (
-          <Drawer
-            title="设置预算"
-            open={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-            placement="bottom"
-            height="70vh"
-          >
-            {settingsContent}
-          </Drawer>
-        ) : (
-          <Modal
-            title="设置预算"
-            open={settingsOpen}
-            onCancel={() => setSettingsOpen(false)}
-            onOk={handleSave}
-            okText="保存"
-            width={440}
-          >
-            {settingsContent}
-          </Modal>
-        )
-      })()}
+        </>
+      )}
     </div>
   )
 }

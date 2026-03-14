@@ -23,6 +23,8 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
   const isMobile = !screens.md
+  const dateInputRef = useRef<HTMLInputElement>(null)
+  const dateInputDesktopRef = useRef<HTMLInputElement>(null)
 
   // Animation state
   const [mounted, setMounted] = useState(false)
@@ -281,24 +283,28 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
               <KeyBtn onClick={() => handleKey('2')}>2</KeyBtn>
               <KeyBtn onClick={() => handleKey('3')}>3</KeyBtn>
               {/* Date button */}
-              <div style={{ position: 'relative' }}>
-                <div style={{
-                  background: '#fff', borderRadius: 16, height: '100%', minHeight: 48,
+              <button
+                type="button"
+                onClick={() => dateInputRef.current?.showPicker?.() ?? dateInputRef.current?.click()}
+                style={{
+                  background: '#fff', borderRadius: 16, minHeight: 48, border: '1px solid #F4F4F5',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  gap: 1, border: '1px solid #F4F4F5',
-                }}>
-                  <span style={{ fontSize: 14 }}>📅</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
-                </div>
+                  gap: 1, cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                }}
+              >
+                <span style={{ fontSize: 14 }}>📅</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
                 <input
+                  ref={dateInputRef}
                   type="date"
                   value={date}
-                  onChange={e => setDate(e.target.value)}
+                  onChange={e => { if (e.target.value) setDate(e.target.value) }}
                   style={{
-                    position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer',
+                    position: 'absolute', bottom: 0, left: 0, width: '100%', height: 1,
+                    opacity: 0, pointerEvents: 'none',
                   }}
                 />
-              </div>
+              </button>
 
               {/* Row 2 */}
               <KeyBtn onClick={() => handleKey('4')}>4</KeyBtn>
@@ -429,19 +435,25 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
             <KeyBtn onClick={() => handleKey('1')}>1</KeyBtn>
             <KeyBtn onClick={() => handleKey('2')}>2</KeyBtn>
             <KeyBtn onClick={() => handleKey('3')}>3</KeyBtn>
-            <div style={{ position: 'relative' }}>
-              <div style={{
-                background: '#fff', borderRadius: 16, height: '100%', minHeight: 48,
+            <button
+              type="button"
+              onClick={() => dateInputDesktopRef.current?.showPicker?.() ?? dateInputDesktopRef.current?.click()}
+              style={{
+                background: '#fff', borderRadius: 16, minHeight: 48, border: '1px solid #F4F4F5',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: 1, border: '1px solid #F4F4F5',
-              }}>
-                <span style={{ fontSize: 14 }}>📅</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
-              </div>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                gap: 1, cursor: 'pointer', position: 'relative', overflow: 'hidden',
+              }}
+            >
+              <span style={{ fontSize: 14 }}>📅</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
+              <input
+                ref={dateInputDesktopRef}
+                type="date"
+                value={date}
+                onChange={e => { if (e.target.value) setDate(e.target.value) }}
+                style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 1, opacity: 0, pointerEvents: 'none' }}
               />
-            </div>
+            </button>
             <KeyBtn onClick={() => handleKey('4')}>4</KeyBtn>
             <KeyBtn onClick={() => handleKey('5')}>5</KeyBtn>
             <KeyBtn onClick={() => handleKey('6')}>6</KeyBtn>
