@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Tabs, Button, Grid, Dropdown, Spin } from 'antd'
+import { Button, Grid, Dropdown, Spin } from 'antd'
 import {
   PlusOutlined,
   LeftOutlined,
@@ -172,21 +172,43 @@ export default function Accounting() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        activeKey={activeTab}
-        onChange={key => { setActiveTab(key); if (key !== 'list') setFilterDate(null) }}
-        size="small"
-        items={[
-          {
-            key: 'list', label: '明细',
-            children: <TransactionList ledgerId={currentLedgerId} yearMonth={yearMonth} filterDate={filterDate} onClearFilter={() => setFilterDate(null)} />,
-          },
-          { key: 'calendar', label: '日历', children: <CalendarView ledgerId={currentLedgerId} yearMonth={yearMonth} onSelectDate={handleCalendarDateSelect} /> },
-          { key: 'charts', label: '图表', children: <StatsCharts ledgerId={currentLedgerId} yearMonth={yearMonth} /> },
-          { key: 'budget', label: '预算', children: <BudgetManager ledgerId={currentLedgerId} yearMonth={yearMonth} /> },
-        ]}
-      />
+      {/* Custom pill tab bar */}
+      {(() => {
+        const tabs = [
+          { key: 'list', label: '明细' },
+          { key: 'calendar', label: '日历' },
+          { key: 'charts', label: '图表' },
+          { key: 'budget', label: '预算' },
+        ]
+        return (
+          <>
+            <div style={{
+              display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3,
+              marginBottom: isMobile ? 10 : 14,
+            }}>
+              {tabs.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => { setActiveTab(tab.key); if (tab.key !== 'list') setFilterDate(null) }}
+                  style={{
+                    flex: 1, padding: '6px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                    border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+                    background: activeTab === tab.key ? '#fff' : 'transparent',
+                    color: activeTab === tab.key ? '#18181B' : '#A1A1AA',
+                    boxShadow: activeTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {activeTab === 'list' && <TransactionList ledgerId={currentLedgerId} yearMonth={yearMonth} filterDate={filterDate} onClearFilter={() => setFilterDate(null)} />}
+            {activeTab === 'calendar' && <CalendarView ledgerId={currentLedgerId} yearMonth={yearMonth} onSelectDate={handleCalendarDateSelect} />}
+            {activeTab === 'charts' && <StatsCharts ledgerId={currentLedgerId} yearMonth={yearMonth} />}
+            {activeTab === 'budget' && <BudgetManager ledgerId={currentLedgerId} yearMonth={yearMonth} />}
+          </>
+        )
+      })()}
 
       {/* Floating add button */}
       <button

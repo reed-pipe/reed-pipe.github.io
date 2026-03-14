@@ -1,11 +1,10 @@
 import { useState, useMemo } from 'react'
-import { Typography, Empty, Progress, Modal, InputNumber, Button, message, Grid } from 'antd'
+import { Typography, Modal, InputNumber, Button, message, Grid } from 'antd'
 import { SettingOutlined, CopyOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import { getMonthRange, formatAmount } from '../utils'
-import { colors, shadows } from '@/shared/theme'
 
 const { Text } = Typography
 
@@ -15,9 +14,9 @@ interface Props {
 }
 
 function budgetColor(percent: number): string {
-  if (percent >= 90) return colors.danger
-  if (percent >= 70) return colors.warning
-  return colors.success
+  if (percent >= 90) return '#EF4444'
+  if (percent >= 70) return '#F59E0B'
+  return '#18181B'
 }
 
 const { useBreakpoint } = Grid
@@ -167,37 +166,51 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
       </div>
 
       {!totalBudget ? (
-        <Empty description="暂未设置预算" style={{ padding: 32 }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0',
+          background: '#fff', borderRadius: 16, border: '1px solid #F4F4F5',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%', background: '#FAFAFA',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 12, fontSize: 24,
+          }}>
+            💰
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA', marginBottom: 16 }}>暂未设置预算</span>
           <Button type="primary" onClick={openSettings}>设置预算</Button>
-        </Empty>
+        </div>
       ) : (
         <>
           {/* Total budget card */}
           <div style={{
-            padding: isMobile ? 14 : 20, borderRadius: isMobile ? 14 : 18,
+            padding: isMobile ? 14 : 20, borderRadius: 16,
             background: '#fff',
-            border: `1px solid ${colors.borderLight}`,
-            boxShadow: shadows.card,
+            border: '1px solid #F4F4F5',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <Text strong style={{ fontSize: isMobile ? 14 : 15 }}>月度总预算</Text>
-              <Text style={{ fontSize: 13, color: colors.textTertiary }}>
+              <Text strong style={{ fontSize: isMobile ? 14 : 15, color: '#18181B' }}>月度总预算</Text>
+              <Text style={{ fontSize: 13, color: '#A1A1AA' }}>
                 {formatAmount(totalBudget.amount)}
               </Text>
             </div>
-            <Progress
-              percent={totalPercent}
-              strokeColor={budgetColor(totalPercent)}
-              size={{ height: isMobile ? 12 : 16 }}
-              format={() => `${totalPercent}%`}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-              <Text style={{ fontSize: 12, color: colors.danger }}>
-                已花 {formatAmount(totalExpense)}
+            <div style={{ height: isMobile ? 12 : 16, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{
+                height: '100%', borderRadius: 9999,
+                background: budgetColor(totalPercent),
+                width: `${totalPercent}%`,
+                transition: 'width 0.6s ease',
+              }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 12, color: '#18181B' }}>
+                已花 {formatAmount(totalExpense)} ({totalPercent}%)
               </Text>
               <Text style={{
                 fontSize: 12,
-                color: totalRemaining >= 0 ? colors.success : colors.danger,
+                color: totalRemaining >= 0 ? '#10B981' : '#EF4444',
                 fontWeight: 600,
               }}>
                 {totalRemaining >= 0 ? `剩余 ${formatAmount(totalRemaining)}` : `超支 ${formatAmount(-totalRemaining)}`}
@@ -215,29 +228,31 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
             return (
               <div key={cat.id} style={{
                 padding: isMobile ? '10px 12px' : '14px 16px',
-                borderRadius: isMobile ? 12 : 14,
+                borderRadius: 16,
                 background: '#fff',
-                border: `1px solid ${colors.borderLight}`,
-                boxShadow: shadows.card,
+                border: '1px solid #F4F4F5',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: isMobile ? 16 : 18 }}>{cat.emoji}</span>
-                    <Text style={{ fontSize: 13, fontWeight: 500 }}>{cat.name}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: 500, color: '#18181B' }}>{cat.name}</Text>
                   </div>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
+                  <Text style={{ fontSize: 11, color: '#71717A' }}>
                     {formatAmount(spent)} / {formatAmount(budget)}
                   </Text>
                 </div>
-                <Progress
-                  percent={percent}
-                  strokeColor={budgetColor(percent)}
-                  size={{ height: isMobile ? 8 : 10 }}
-                  showInfo={false}
-                />
+                <div style={{ height: isMobile ? 8 : 10, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 9999,
+                    background: budgetColor(percent),
+                    width: `${percent}%`,
+                    transition: 'width 0.6s ease',
+                  }} />
+                </div>
                 <Text style={{
                   fontSize: 11, marginTop: 3, display: 'block',
-                  color: remaining >= 0 ? colors.textTertiary : colors.danger,
+                  color: remaining >= 0 ? '#A1A1AA' : '#EF4444',
                 }}>
                   {remaining >= 0 ? `剩余 ${formatAmount(remaining)}` : `超支 ${formatAmount(-remaining)}`}
                 </Text>

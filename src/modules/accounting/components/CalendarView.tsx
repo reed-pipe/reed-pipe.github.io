@@ -3,7 +3,6 @@ import { Grid } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { getMonthRange, formatAmount } from '../utils'
-import { colors } from '@/shared/theme'
 
 const { useBreakpoint } = Grid
 
@@ -105,7 +104,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
             y={HEADER_H - 6}
             textAnchor="middle"
             fontSize={isMobile ? 11 : 12}
-            fill={colors.textTertiary}
+            fill="#A1A1AA"
           >
             {w}
           </text>
@@ -132,8 +131,8 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
                   x={x} y={y}
                   width={CELL_SIZE} height={ROW_H}
                   rx={8} ry={8}
-                  fill={isSelected ? `${colors.primary}18` : isToday ? `${colors.primary}10` : sums ? '#FAFAFA' : 'transparent'}
-                  stroke={isSelected ? colors.primary : isToday ? colors.primary : 'transparent'}
+                  fill={isSelected ? 'rgba(24,24,27,0.08)' : isToday ? 'rgba(24,24,27,0.04)' : sums ? '#FAFAFA' : 'transparent'}
+                  stroke={isSelected ? '#18181B' : isToday ? '#18181B' : 'transparent'}
                   strokeWidth={isSelected ? 2 : isToday ? 1.5 : 0}
                 />
 
@@ -144,7 +143,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
                   textAnchor="middle"
                   fontSize={isMobile ? 12 : 13}
                   fontWeight={isToday || isSelected ? 700 : 400}
-                  fill={isSelected ? colors.primary : isToday ? colors.primary : colors.text}
+                  fill={isSelected ? '#18181B' : isToday ? '#18181B' : '#18181B'}
                 >
                   {day}
                 </text>
@@ -156,7 +155,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
                     y={y + ROW_H * 0.55}
                     textAnchor="middle"
                     fontSize={fontSize}
-                    fill={colors.danger}
+                    fill="#EF4444"
                   >
                     -{formatAmount(sums.expense)}
                   </text>
@@ -169,7 +168,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
                     y={y + ROW_H * 0.8}
                     textAnchor="middle"
                     fontSize={fontSize}
-                    fill={colors.success}
+                    fill="#10B981"
                   >
                     +{formatAmount(sums.income)}
                   </text>
@@ -180,7 +179,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
         )}
       </svg>
       {/* Hint */}
-      <div style={{ textAlign: 'center', fontSize: 11, color: colors.textTertiary, marginTop: 6 }}>
+      <div style={{ textAlign: 'center', fontSize: 11, color: '#A1A1AA', marginTop: 6 }}>
         点击日期查看当日明细
       </div>
     </div>

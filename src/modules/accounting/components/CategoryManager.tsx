@@ -5,7 +5,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { TransactionType, AccCategory } from '@/shared/db'
-import { colors } from '@/shared/theme'
 
 interface Props {
   open: boolean
@@ -93,7 +92,7 @@ export default function CategoryManager({ open, onClose }: Props) {
             <div key={cat.id} style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 12px', borderRadius: 12,
-              background: colors.bg,
+              background: '#FAFAFA',
             }}>
               <span style={{ fontSize: 22 }}>{cat.emoji}</span>
               <span style={{ flex: 1, fontWeight: 500, fontSize: 14 }}>{cat.name}</span>
@@ -110,14 +109,14 @@ export default function CategoryManager({ open, onClose }: Props) {
                   </Popconfirm>
                 </>
               ) : (
-                <span style={{ fontSize: 11, color: colors.textTertiary }}>预设</span>
+                <span style={{ fontSize: 11, color: '#A1A1AA' }}>预设</span>
               )}
             </div>
           ))}
         </div>
 
         {editing ? (
-          <div style={{ padding: 14, borderRadius: 14, background: colors.bg, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ padding: 14, borderRadius: 14, background: '#FAFAFA', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {CATEGORY_EMOJIS.map(e => (
                 <span
@@ -125,7 +124,7 @@ export default function CategoryManager({ open, onClose }: Props) {
                   onClick={() => setEditing({ ...editing, emoji: e })}
                   style={{
                     fontSize: 18, cursor: 'pointer', padding: 4, borderRadius: 8,
-                    background: editing.emoji === e ? colors.primaryBg : 'transparent',
+                    background: editing.emoji === e ? '#F4F4F5' : 'transparent',
                   }}
                 >
                   {e}

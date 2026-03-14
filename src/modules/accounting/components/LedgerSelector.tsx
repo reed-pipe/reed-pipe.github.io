@@ -6,7 +6,6 @@ import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import { useAccountingStore } from '../store'
 import type { Ledger } from '@/shared/db'
-import { colors } from '@/shared/theme'
 
 interface Props {
   value: number
@@ -87,9 +86,9 @@ export default function LedgerSelector({ value, onChange }: Props) {
             {menu}
             <div
               style={{
-                padding: '8px 12px', borderTop: `1px solid ${colors.borderLight}`,
+                padding: '8px 12px', borderTop: '1px solid #F4F4F5',
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                color: colors.primary, fontSize: 13,
+                color: '#18181B', fontSize: 13,
               }}
               onClick={() => { setManageOpen(true) }}
             >
@@ -121,13 +120,13 @@ export default function LedgerSelector({ value, onChange }: Props) {
             <div key={l.id} style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 12px', borderRadius: 12,
-              background: colors.bg,
-              border: `1px solid ${l.id === value ? colors.primary : colors.borderLight}`,
+              background: '#FAFAFA',
+              border: `1px solid ${l.id === value ? '#18181B' : '#F4F4F5'}`,
             }}>
               <span style={{ fontSize: 20 }}>{l.emoji}</span>
               <span style={{ flex: 1, fontWeight: 500 }}>{l.name}</span>
               {l.isDefault && (
-                <span style={{ fontSize: 11, color: colors.primary, background: colors.primaryBg, padding: '2px 8px', borderRadius: 6 }}>
+                <span style={{ fontSize: 11, color: '#18181B', background: '#F4F4F5', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
                   默认
                 </span>
               )}
@@ -147,7 +146,7 @@ export default function LedgerSelector({ value, onChange }: Props) {
 
           {/* Add/edit form */}
           {editingLedger ? (
-            <div style={{ padding: 12, borderRadius: 12, background: colors.bg, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: 12, borderRadius: 12, background: '#FAFAFA', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8 }}>
                 {LEDGER_EMOJIS.map(e => (
                   <span
@@ -155,7 +154,7 @@ export default function LedgerSelector({ value, onChange }: Props) {
                     onClick={() => setEditingLedger({ ...editingLedger, emoji: e })}
                     style={{
                       fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 8,
-                      background: editingLedger.emoji === e ? colors.primaryBg : 'transparent',
+                      background: editingLedger.emoji === e ? '#F4F4F5' : 'transparent',
                     }}
                   >
                     {e}
