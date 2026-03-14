@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Typography, Modal, InputNumber, Button, message, Grid } from 'antd'
+import { Typography, Modal, Drawer, InputNumber, Button, message, Grid } from 'antd'
 import { SettingOutlined, CopyOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
@@ -262,63 +262,87 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
         </>
       )}
 
-      {/* Settings modal */}
-      <Modal
-        title="设置预算"
-        open={settingsOpen}
-        onCancel={() => setSettingsOpen(false)}
-        onOk={handleSave}
-        okText="保存"
-        width={isMobile ? '92vw' : 440}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Copy from last month */}
-          {prevBudgets.length > 0 && (
-            <Button
-              type="dashed"
-              icon={<CopyOutlined />}
-              block
-              onClick={handleCopyFromLastMonth}
-              size="small"
-            >
-              复制上月预算
-            </Button>
-          )}
+      {/* Settings modal / drawer */}
+      {(() => {
+        const settingsContent = (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Copy from last month */}
+            {prevBudgets.length > 0 && (
+              <Button
+                type="dashed"
+                icon={<CopyOutlined />}
+                block
+                onClick={handleCopyFromLastMonth}
+                size="small"
+              >
+                复制上月预算
+              </Button>
+            )}
 
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 6 }}>月度总预算</Text>
-            <InputNumber
-              value={totalBudgetInput}
-              onChange={v => setTotalBudgetInput(v)}
-              min={0}
-              step={100}
-              placeholder="不限"
-              style={{ width: '100%' }}
-              prefix="¥"
-            />
-          </div>
+            <div>
+              <Text strong style={{ display: 'block', marginBottom: 6 }}>月度总预算</Text>
+              <InputNumber
+                value={totalBudgetInput}
+                onChange={v => setTotalBudgetInput(v)}
+                min={0}
+                step={100}
+                placeholder="不限"
+                style={{ width: '100%' }}
+                prefix="¥"
+              />
+            </div>
 
-          <Text strong>分类预算（可选）</Text>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
-            {categories.map(cat => (
-              <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16, width: 22 }}>{cat.emoji}</span>
-                <Text style={{ fontSize: 13, width: 50 }}>{cat.name}</Text>
-                <InputNumber
-                  value={categoryBudgets[cat.id]}
-                  onChange={v => setCategoryBudgets({ ...categoryBudgets, [cat.id]: v })}
-                  min={0}
-                  step={100}
-                  placeholder="不限"
-                  style={{ flex: 1 }}
-                  size="small"
-                  prefix="¥"
-                />
-              </div>
-            ))}
+            <Text strong>分类预算（可选）</Text>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: isMobile ? undefined : 280, overflowY: isMobile ? undefined : 'auto' }}>
+              {categories.map(cat => (
+                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16, width: 22 }}>{cat.emoji}</span>
+                  <Text style={{ fontSize: 13, width: 50 }}>{cat.name}</Text>
+                  <InputNumber
+                    value={categoryBudgets[cat.id]}
+                    onChange={v => setCategoryBudgets({ ...categoryBudgets, [cat.id]: v })}
+                    min={0}
+                    step={100}
+                    placeholder="不限"
+                    style={{ flex: 1 }}
+                    size="small"
+                    prefix="¥"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {isMobile && (
+              <Button type="primary" block onClick={handleSave} style={{ marginTop: 8 }}>
+                保存
+              </Button>
+            )}
           </div>
-        </div>
-      </Modal>
+        )
+
+        return isMobile ? (
+          <Drawer
+            title="设置预算"
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            placement="bottom"
+            height="70vh"
+          >
+            {settingsContent}
+          </Drawer>
+        ) : (
+          <Modal
+            title="设置预算"
+            open={settingsOpen}
+            onCancel={() => setSettingsOpen(false)}
+            onOk={handleSave}
+            okText="保存"
+            width={440}
+          >
+            {settingsContent}
+          </Modal>
+        )
+      })()}
     </div>
   )
 }

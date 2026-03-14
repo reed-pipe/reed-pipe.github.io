@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Grid, message } from 'antd'
 import { DeleteOutlined, CloseOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -23,6 +23,34 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
   const isMobile = !screens.md
+
+  // Animation state
+  const [mounted, setMounted] = useState(false)
+  const [visible, setVisible] = useState(false)
+  const closingRef = useRef(false)
+
+  useEffect(() => {
+    if (open) {
+      closingRef.current = false
+      setMounted(true)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true))
+      })
+    } else {
+      setVisible(false)
+      setMounted(false)
+    }
+  }, [open])
+
+  const handleClose = useCallback(() => {
+    if (closingRef.current) return
+    closingRef.current = true
+    setVisible(false)
+    setTimeout(() => {
+      setMounted(false)
+      onClose()
+    }, 350)
+  }, [onClose])
 
   const [type, setType] = useState<TransactionType>('expense')
   const [categoryId, setCategoryId] = useState<number | null>(null)
@@ -101,14 +129,14 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
     if (remark.trim()) useAccountingStore.getState().addNoteHistory(remark.trim(), db)
     notifyChanged()
     message.success(editingTransaction ? '已更新' : '记账成功')
-    onClose()
+    handleClose()
   }
 
   const dateLabel = date === dayjs().format('YYYY-MM-DD') ? '今天'
     : date === dayjs().subtract(1, 'day').format('YYYY-MM-DD') ? '昨天'
     : date.slice(5).replace('-', '/')
 
-  if (!open) return null
+  if (!mounted && !open) return null
 
   // ===== MOBILE LAYOUT: Bottom sheet =====
   if (isMobile) {
@@ -116,10 +144,12 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
       <>
         {/* Backdrop */}
         <div
-          onClick={onClose}
+          onClick={handleClose}
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
             background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+            opacity: visible ? 1 : 0,
+            transition: 'opacity 0.3s ease',
           }}
         />
         {/* Sheet */}
@@ -130,9 +160,11 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
           height: '85vh',
           boxShadow: '0 -10px 40px rgba(0,0,0,0.1)',
           overflow: 'hidden',
+          transform: visible ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
         }}>
           {/* Drag handle */}
-          <div onClick={onClose} style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 6px', flexShrink: 0 }}>
+          <div onClick={handleClose} style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 6px', flexShrink: 0 }}>
             <div style={{ width: 40, height: 5, borderRadius: 3, background: '#E4E4E7' }} />
           </div>
 
@@ -154,7 +186,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
                 </button>
               ))}
             </div>
-            <button onClick={onClose} style={{
+            <button onClick={handleClose} style={{
               width: 32, height: 32, borderRadius: '50%', border: 'none',
               background: '#F4F4F5', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
@@ -310,11 +342,16 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   // ===== DESKTOP: Modal-like =====
   return (
     <>
-      <div onClick={onClose} style={{
+      <div onClick={handleClose} style={{
         position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.3)',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.3s ease',
       }} />
       <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        position: 'fixed', top: '50%', left: '50%',
+        transform: visible ? 'translate(-50%, -50%) scale(1)' : 'translate(-50%, -48%) scale(0.96)',
+        opacity: visible ? 1 : 0,
+        transition: 'transform 0.3s ease, opacity 0.3s ease',
         zIndex: 1001, background: '#fff', borderRadius: 24, width: 420, maxHeight: '85vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
@@ -334,7 +371,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
               </button>
             ))}
           </div>
-          <button onClick={onClose} style={{
+          <button onClick={handleClose} style={{
             width: 32, height: 32, borderRadius: '50%', border: 'none',
             background: '#F4F4F5', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',

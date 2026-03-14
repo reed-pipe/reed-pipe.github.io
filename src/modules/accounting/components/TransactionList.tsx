@@ -15,9 +15,10 @@ interface Props {
   yearMonth: string
   filterDate?: string | null
   onClearFilter?: () => void
+  onAdd?: () => void
 }
 
-export default function TransactionList({ ledgerId, yearMonth, filterDate, onClearFilter }: Props) {
+export default function TransactionList({ ledgerId, yearMonth, filterDate, onClearFilter, onAdd }: Props) {
   const db = useDb()
   const screens = useBreakpoint()
   const isMobile = !screens.md
@@ -92,6 +93,21 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
           <span style={{ fontSize: 13, fontWeight: 500 }}>
             {search || filterDate ? '没有匹配的记录' : '暂无记账记录'}
           </span>
+          {!search && !filterDate && onAdd && (
+            <button
+              onClick={onAdd}
+              style={{
+                marginTop: 16, background: '#18181B', color: '#fff',
+                borderRadius: 12, padding: '10px 24px', fontSize: 13,
+                fontWeight: 600, border: 'none', cursor: 'pointer',
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+            >
+              记一笔
+            </button>
+          )}
         </div>
       ) : (
         groups.map(group => (

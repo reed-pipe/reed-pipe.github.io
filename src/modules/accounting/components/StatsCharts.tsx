@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback, useRef } from 'react'
 import { Grid } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
@@ -17,6 +17,7 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
   const screens = useBreakpoint()
   const isMobile = !screens.md
   const [txnType, setTxnType] = useState<TransactionType>('expense')
+  const [chartView, setChartView] = useState<'rank' | 'trend'>('rank')
 
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
 
@@ -34,6 +35,12 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
   ) ?? []
 
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
+
+  // Transaction count for current type
+  const txnCount = useMemo(
+    () => transactions.filter(t => t.type === txnType).length,
+    [transactions, txnType],
+  )
 
   // Category totals
   const rankData = useMemo(() => {
@@ -57,6 +64,23 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
       barWidth: maxAmount > 0 ? (d.amount / maxAmount * 100) : 0,
     }))
   }, [transactions, txnType, catMap])
+
+  // Daily totals for trend chart
+  const dailyData = useMemo(() => {
+    const [y, m] = yearMonth.split('-').map(Number) as [number, number]
+    const daysInMonth = new Date(y, m, 0).getDate()
+    const map = new Map<number, number>()
+    for (const t of transactions) {
+      if (t.type !== txnType) continue
+      const day = parseInt(t.date.slice(8), 10)
+      map.set(day, (map.get(day) ?? 0) + t.amount)
+    }
+    const result: { day: number; amount: number }[] = []
+    for (let d = 1; d <= daysInMonth; d++) {
+      result.push({ day: d, amount: map.get(d) ?? 0 })
+    }
+    return result
+  }, [transactions, txnType, yearMonth])
 
   const totalAmount = rankData.reduce((s, d) => s + d.amount, 0)
 
@@ -99,72 +123,242 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
             {totalAmount.toFixed(2)}
           </span>
         </div>
+        <div style={{ fontSize: 12, fontWeight: 500, color: '#A1A1AA', marginTop: 2 }}>
+          共 {txnCount} 笔
+        </div>
       </div>
 
-      {/* Rank card */}
-      <div style={{
+      {/* Chart view toggle: 排行 | 趋势 */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{
+          display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3,
+          width: '100%', maxWidth: 180,
+        }}>
+          {([{ key: 'rank' as const, label: '排行' }, { key: 'trend' as const, label: '趋势' }]).map(v => (
+            <button
+              key={v.key}
+              onClick={() => setChartView(v.key)}
+              style={{
+                flex: 1, padding: '5px 14px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+                background: chartView === v.key ? '#fff' : 'transparent',
+                color: chartView === v.key ? '#18181B' : '#A1A1AA',
+                boxShadow: chartView === v.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {chartView === 'rank' ? (
+        /* Rank card */
+        <div style={{
+          background: '#fff', borderRadius: 24, padding: isMobile ? 16 : 20,
+          border: '1px solid rgba(244,244,245,0.8)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 0.5px 2px rgba(0,0,0,0.02)',
+        }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#18181B', marginBottom: 20, marginTop: 0 }}>
+            分类排行
+          </h3>
+
+          {rankData.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0' }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%', background: '#FAFAFA',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                marginBottom: 12, fontSize: 24,
+              }}>
+                📊
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA' }}>暂无数据</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {rankData.map(item => (
+                <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {/* Icon */}
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    background: isExpense ? '#F4F4F5' : '#ECFDF5',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 20,
+                  }}>
+                    {item.emoji}
+                  </div>
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>
+                        {item.name}{' '}
+                        <span style={{ color: '#A1A1AA', fontWeight: 500, marginLeft: 4 }}>
+                          {item.percent.toFixed(1)}%
+                        </span>
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#18181B' }}>
+                        ¥{formatAmount(item.amount)}
+                      </span>
+                    </div>
+                    {/* Progress bar */}
+                    <div style={{
+                      height: 8, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        height: '100%', borderRadius: 9999,
+                        background: isExpense ? '#18181B' : '#10B981',
+                        width: `${item.barWidth}%`,
+                        transition: 'width 0.6s ease-out',
+                      }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Trend chart */
+        <TrendChart dailyData={dailyData} isExpense={isExpense} isMobile={isMobile} />
+      )}
+    </div>
+  )
+}
+
+function TrendChart({ dailyData, isExpense, isMobile }: {
+  dailyData: { day: number; amount: number }[]
+  isExpense: boolean
+  isMobile: boolean
+}) {
+  const [containerWidth, setContainerWidth] = useState(300)
+  const [tooltip, setTooltip] = useState<{ day: number; amount: number; x: number; y: number } | null>(null)
+  const roRef = useRef<ResizeObserver | null>(null)
+
+  const measuredRef = useCallback((node: HTMLDivElement | null) => {
+    if (roRef.current) { roRef.current.disconnect(); roRef.current = null }
+    if (node) {
+      const w = node.getBoundingClientRect().width
+      if (w > 0) setContainerWidth(w)
+      const ro = new ResizeObserver(entries => {
+        const e = entries[0]
+        if (e && e.contentRect.width > 0) setContainerWidth(e.contentRect.width)
+      })
+      ro.observe(node)
+      roRef.current = ro
+    }
+  }, [])
+
+  const CHART_H = 180
+  const PADDING_TOP = 28
+  const PADDING_BOTTOM = 24
+  const PADDING_LEFT = 8
+  const PADDING_RIGHT = 8
+  const chartWidth = containerWidth - PADDING_LEFT - PADDING_RIGHT
+  const chartHeight = CHART_H - PADDING_TOP - PADDING_BOTTOM
+  const barColor = isExpense ? '#18181B' : '#10B981'
+
+  const maxAmount = useMemo(() => Math.max(...dailyData.map(d => d.amount), 1), [dailyData])
+  const barGap = 2
+  const barWidth = Math.max(8, (chartWidth - (dailyData.length - 1) * barGap) / dailyData.length)
+  const totalBarsWidth = dailyData.length * barWidth + (dailyData.length - 1) * barGap
+  const offsetX = PADDING_LEFT + (chartWidth - totalBarsWidth) / 2
+
+  const xLabels = [1, 5, 10, 15, 20, 25]
+  const lastDay = dailyData.length
+  if (lastDay >= 28) xLabels.push(lastDay)
+
+  return (
+    <div
+      ref={measuredRef}
+      style={{
         background: '#fff', borderRadius: 24, padding: isMobile ? 16 : 20,
         border: '1px solid rgba(244,244,245,0.8)',
         boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 0.5px 2px rgba(0,0,0,0.02)',
-      }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#18181B', marginBottom: 20, marginTop: 0 }}>
-          分类排行
-        </h3>
+        position: 'relative',
+      }}
+    >
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#18181B', marginBottom: 12, marginTop: 0 }}>
+        每日趋势
+      </h3>
 
-        {rankData.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0' }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: '50%', background: '#FAFAFA',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: 12, fontSize: 24,
-            }}>
-              📊
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA' }}>暂无数据</span>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {rankData.map(item => (
-              <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {/* Icon */}
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                  background: isExpense ? '#F4F4F5' : '#ECFDF5',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 20,
-                }}>
-                  {item.emoji}
-                </div>
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>
-                      {item.name}{' '}
-                      <span style={{ color: '#A1A1AA', fontWeight: 500, marginLeft: 4 }}>
-                        {item.percent.toFixed(1)}%
-                      </span>
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#18181B' }}>
-                      ¥{formatAmount(item.amount)}
-                    </span>
-                  </div>
-                  {/* Progress bar */}
-                  <div style={{
-                    height: 8, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden',
-                  }}>
-                    <div style={{
-                      height: '100%', borderRadius: 9999,
-                      background: isExpense ? '#18181B' : '#10B981',
-                      width: `${item.barWidth}%`,
-                      transition: 'width 0.6s ease-out',
-                    }} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+      <svg width={containerWidth - (isMobile ? 32 : 40)} height={CHART_H} style={{ display: 'block' }}>
+        {/* Max value label */}
+        <text x={PADDING_LEFT} y={PADDING_TOP - 8} fontSize={10} fill="#A1A1AA">
+          ¥{formatAmount(maxAmount)}
+        </text>
+
+        {/* Bars */}
+        {dailyData.map((d, i) => {
+          const barH = d.amount > 0 ? Math.max(2, (d.amount / maxAmount) * chartHeight) : 0
+          const x = offsetX + i * (barWidth + barGap)
+          const y = PADDING_TOP + chartHeight - barH
+          return (
+            <rect
+              key={d.day}
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barH}
+              rx={Math.min(3, barWidth / 2)}
+              fill={barColor}
+              opacity={d.amount > 0 ? 0.85 : 0.1}
+              style={{ cursor: d.amount > 0 ? 'pointer' : 'default', transition: 'opacity 0.15s' }}
+              onMouseEnter={() => {
+                if (d.amount > 0) setTooltip({ day: d.day, amount: d.amount, x: x + barWidth / 2, y: y - 6 })
+              }}
+              onMouseLeave={() => setTooltip(null)}
+              onClick={() => {
+                if (d.amount > 0) setTooltip(prev =>
+                  prev?.day === d.day ? null : { day: d.day, amount: d.amount, x: x + barWidth / 2, y: y - 6 }
+                )
+              }}
+            />
+          )
+        })}
+
+        {/* X-axis labels */}
+        {xLabels.map(day => {
+          const i = day - 1
+          if (i >= dailyData.length) return null
+          const x = offsetX + i * (barWidth + barGap) + barWidth / 2
+          return (
+            <text
+              key={day}
+              x={x}
+              y={PADDING_TOP + chartHeight + 16}
+              textAnchor="middle"
+              fontSize={10}
+              fill="#A1A1AA"
+            >
+              {day}
+            </text>
+          )
+        })}
+
+        {/* Tooltip */}
+        {tooltip && (
+          <g>
+            <rect
+              x={Math.max(4, Math.min(tooltip.x - 40, (containerWidth - (isMobile ? 32 : 40)) - 84))}
+              y={Math.max(0, tooltip.y - 28)}
+              width={80}
+              height={24}
+              rx={6}
+              fill="#18181B"
+            />
+            <text
+              x={Math.max(44, Math.min(tooltip.x, (containerWidth - (isMobile ? 32 : 40)) - 44))}
+              y={Math.max(16, tooltip.y - 12)}
+              textAnchor="middle"
+              fontSize={11}
+              fontWeight={600}
+              fill="#fff"
+            >
+              {tooltip.day}日 ¥{formatAmount(tooltip.amount)}
+            </text>
+          </g>
         )}
-      </div>
+      </svg>
     </div>
   )
 }

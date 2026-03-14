@@ -103,7 +103,7 @@ export default function Accounting() {
   if (!currentLedgerId) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', paddingBottom: 72 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', paddingBottom: 80 }}>
       {/* Top bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -202,7 +202,7 @@ export default function Accounting() {
                 </button>
               ))}
             </div>
-            {activeTab === 'list' && <TransactionList ledgerId={currentLedgerId} yearMonth={yearMonth} filterDate={filterDate} onClearFilter={() => setFilterDate(null)} />}
+            {activeTab === 'list' && <TransactionList ledgerId={currentLedgerId} yearMonth={yearMonth} filterDate={filterDate} onClearFilter={() => setFilterDate(null)} onAdd={() => setQuickEntryOpen(true)} />}
             {activeTab === 'calendar' && <CalendarView ledgerId={currentLedgerId} yearMonth={yearMonth} onSelectDate={handleCalendarDateSelect} />}
             {activeTab === 'charts' && <StatsCharts ledgerId={currentLedgerId} yearMonth={yearMonth} />}
             {activeTab === 'budget' && <BudgetManager ledgerId={currentLedgerId} yearMonth={yearMonth} />}
