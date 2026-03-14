@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Typography, Empty, Input, Tag, Grid } from 'antd'
+import { Typography, Input, Tag, Grid } from 'antd'
 import { SearchOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import type { AccTransaction } from '@/shared/db'
-import { groupTransactionsByDate, formatAmount, formatDateLabel, getWeekDay, getMonthRange } from '../utils'
-import { colors } from '@/shared/theme'
+import { groupTransactionsByDate, formatDateLabel, getWeekDay, getMonthRange } from '../utils'
 import QuickEntry from './QuickEntry'
 
 const { Text } = Typography
@@ -13,7 +12,7 @@ const { useBreakpoint } = Grid
 
 interface Props {
   ledgerId: number
-  yearMonth: string // "2026-03"
+  yearMonth: string
   filterDate?: string | null
   onClearFilter?: () => void
 }
@@ -44,23 +43,16 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
 
   const filtered = useMemo(() => {
     let result = transactions
-
-    // Filter by specific date
-    if (filterDate) {
-      result = result.filter(t => t.date === filterDate)
-    }
-
-    // Filter by search
+    if (filterDate) result = result.filter(t => t.date === filterDate)
     if (search.trim()) {
       const q = search.toLowerCase()
       result = result.filter(t => {
         const cat = catMap.get(t.categoryId)
-        return (t.note?.toLowerCase().includes(q)) ||
-          (cat?.name.toLowerCase().includes(q)) ||
-          (t.tags?.some(tag => tag.toLowerCase().includes(q)))
+        return t.note?.toLowerCase().includes(q) ||
+          cat?.name.toLowerCase().includes(q) ||
+          t.tags?.some(tag => tag.toLowerCase().includes(q))
       })
     }
-
     return result
   }, [transactions, search, catMap, filterDate])
 
@@ -68,69 +60,66 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {/* Filter indicator */}
       {filterDate && (
         <Tag
-          color="blue"
-          closable
-          onClose={onClearFilter}
-          closeIcon={<CloseCircleOutlined />}
+          color="blue" closable onClose={onClearFilter} closeIcon={<CloseCircleOutlined />}
           style={{ alignSelf: 'flex-start', margin: '0 0 8px 0', padding: '2px 10px', borderRadius: 8 }}
         >
           {formatDateLabel(filterDate)} {getWeekDay(filterDate)} 的记录
         </Tag>
       )}
 
-      {/* Search - subtle style */}
       <Input
-        prefix={<SearchOutlined style={{ color: colors.textTertiary }} />}
+        prefix={<SearchOutlined style={{ color: '#A1A1AA' }} />}
         placeholder="搜索备注、分类..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        allowClear
-        size="small"
-        variant="filled"
-        style={{
-          borderRadius: 20,
-          marginBottom: 12,
-          background: colors.bg,
-          fontSize: 13,
-        }}
+        value={search} onChange={e => setSearch(e.target.value)}
+        allowClear size="small" variant="filled"
+        style={{ borderRadius: 20, marginBottom: 12, background: '#F4F4F5', fontSize: 13 }}
       />
 
       {groups.length === 0 ? (
-        <Empty description={search || filterDate ? '没有匹配的记录' : '本月暂无记录'} style={{ padding: 32 }} />
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', padding: '48px 0', color: '#A1A1AA',
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%', background: '#F4F4F5',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 12, fontSize: 24,
+          }}>
+            📋
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            {search || filterDate ? '没有匹配的记录' : '暂无记账记录'}
+          </span>
+        </div>
       ) : (
         groups.map(group => (
-          <div key={group.date} style={{ marginBottom: isMobile ? 8 : 12 }}>
-            {/* Date header - simple text */}
+          <div key={group.date} style={{ marginBottom: isMobile ? 16 : 20 }}>
+            {/* Date header */}
             <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: isMobile ? '8px 4px 4px' : '10px 4px 6px',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+              marginBottom: 8, padding: '0 2px',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: isMobile ? 12 : 13, color: colors.textTertiary, fontWeight: 500 }}>
-                  {formatDateLabel(group.date)}
-                </Text>
-                <Text style={{ fontSize: 11, color: colors.textTertiary }}>{getWeekDay(group.date)}</Text>
-              </div>
-              <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                {group.totalExpense > 0 && (
-                  <Text style={{ color: colors.textTertiary }}>支出 {formatAmount(group.totalExpense)}</Text>
-                )}
-                {group.totalIncome > 0 && (
-                  <Text style={{ color: colors.textTertiary }}>收入 {formatAmount(group.totalIncome)}</Text>
-                )}
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#18181B' }}>
+                {formatDateLabel(group.date)}
+              </span>
+              <div style={{ display: 'flex', gap: 10, fontSize: 11, fontWeight: 500, color: '#A1A1AA' }}>
+                {group.totalIncome > 0 && <span>收 {group.totalIncome.toFixed(2)}</span>}
+                {group.totalExpense > 0 && <span>支 {group.totalExpense.toFixed(2)}</span>}
               </div>
             </div>
 
-            {/* Transactions - flat rows */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {/* Transactions card */}
+            <div style={{
+              background: '#fff', borderRadius: 16,
+              border: '1px solid rgba(244,244,245,0.8)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              overflow: 'hidden',
+            }}>
               {group.transactions.map((t, idx) => {
                 const cat = catMap.get(t.categoryId)
                 const isLast = idx === group.transactions.length - 1
-                const primaryText = t.note || cat?.name || '未知'
-                const secondaryText = t.note ? (cat?.name || '未知') : null
 
                 return (
                   <div
@@ -138,53 +127,45 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
                     onClick={() => setEditing(t)}
                     style={{
                       display: 'flex', alignItems: 'center',
-                      gap: isMobile ? 10 : 14,
-                      padding: isMobile ? '12px 4px' : '14px 4px',
-                      borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s',
-                      borderRadius: 0,
+                      padding: isMobile ? '12px 14px' : '14px 16px',
+                      cursor: 'pointer', transition: 'background 0.15s',
+                      borderBottom: isLast ? 'none' : '1px solid #FAFAFA',
                     }}
                     onMouseEnter={e => { e.currentTarget.style.background = '#FAFAFA' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    {/* Category icon - circle */}
+                    {/* Icon */}
                     <div style={{
-                      width: 36, height: 36,
-                      borderRadius: '50%',
-                      background: `${cat?.color ?? '#6B7280'}15`,
+                      width: 40, height: 40, borderRadius: 12,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 17, flexShrink: 0,
+                      marginRight: 12, flexShrink: 0, fontSize: 20,
+                      background: t.type === 'expense' ? '#F4F4F5' : '#ECFDF5',
                     }}>
                       {cat?.emoji ?? '💰'}
                     </div>
 
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{
-                        fontSize: isMobile ? 14 : 15, fontWeight: 500, display: 'block',
-                        color: colors.text,
-                      }} ellipsis>
-                        {primaryText}
-                      </Text>
-                      {secondaryText && (
-                        <Text style={{
-                          fontSize: 11, display: 'block',
-                          color: colors.textTertiary,
-                          marginTop: 1,
-                        }} ellipsis>
-                          {secondaryText}
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        marginBottom: t.note ? 2 : 0,
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>
+                          {cat?.name ?? '未知'}
+                        </span>
+                        <span style={{
+                          fontSize: 15, fontWeight: 600,
+                          color: t.type === 'income' ? '#10B981' : '#18181B',
+                        }}>
+                          {t.type === 'expense' ? '-' : '+'}{t.amount.toFixed(2)}
+                        </span>
+                      </div>
+                      {t.note && (
+                        <Text style={{ fontSize: 11, color: '#A1A1AA', display: 'block' }} ellipsis>
+                          {t.note}
                         </Text>
                       )}
                     </div>
-
-                    {/* Amount */}
-                    <Text style={{
-                      fontSize: isMobile ? 15 : 16, flexShrink: 0, fontWeight: 700,
-                      color: t.type === 'expense' ? colors.text : colors.success,
-                    }}>
-                      {t.type === 'expense' ? '-' : '+'}{formatAmount(t.amount)}
-                    </Text>
                   </div>
                 )
               })}
@@ -193,7 +174,6 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
         ))
       )}
 
-      {/* Edit modal */}
       <QuickEntry
         open={!!editing}
         onClose={() => setEditing(null)}

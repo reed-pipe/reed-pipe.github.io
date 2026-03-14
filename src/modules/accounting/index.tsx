@@ -12,9 +12,8 @@ import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useAccountingStore } from './store'
-import { seedDefaultCategories, seedDefaultLedger, formatAmount, getMonthRange } from './utils'
+import { seedDefaultCategories, seedDefaultLedger, getMonthRange } from './utils'
 import LedgerSelector from './components/LedgerSelector'
-import MonthlySummary from './components/MonthlySummary'
 import TransactionList from './components/TransactionList'
 import CalendarView from './components/CalendarView'
 import StatsCharts from './components/StatsCharts'
@@ -22,7 +21,6 @@ import BudgetManager from './components/BudgetManager'
 import CategoryManager from './components/CategoryManager'
 import QuickEntry from './components/QuickEntry'
 import ExportModal from './components/ExportModal'
-import { colors, gradients, shadows } from '@/shared/theme'
 
 const { useBreakpoint } = Grid
 
@@ -74,7 +72,7 @@ export default function Accounting() {
     if (key === 'export') setExportOpen(true)
   }
 
-  // Inline summary
+  // Summary data
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
   const transactions = useLiveQuery(
     () => db.accTransactions
@@ -93,8 +91,7 @@ export default function Accounting() {
     return { income, expense }
   }, [transactions])
 
-  const balance = income - expense
-  const [, displayMonth] = yearMonth.split('-')
+  const ymLabel = `${yearMonth.split('-')[0]}年${Number(yearMonth.split('-')[1])}月`
 
   if (!storeLoaded || ledgers.length === 0) {
     return (
@@ -107,76 +104,73 @@ export default function Accounting() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', paddingBottom: 72 }}>
-      {/* Header: single compact bar */}
+      {/* Top bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: isMobile ? '0 2px 6px' : '0 4px 10px',
+        padding: isMobile ? '0 0 10px' : '0 0 12px',
       }}>
-        <LedgerSelector value={currentLedgerId} onChange={setLedgerId} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-          <Button type="text" size="small" icon={<LeftOutlined />} onClick={prevMonth} />
-          <span style={{ fontSize: 15, fontWeight: 700, color: colors.text, minWidth: 56, textAlign: 'center' }}>
-            {Number(displayMonth)}月
-          </span>
-          <Button type="text" size="small" icon={<RightOutlined />} onClick={nextMonth} />
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#18181B', letterSpacing: '-0.02em', margin: 0 }}>
+          账单明细
+        </h1>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <LedgerSelector value={currentLedgerId} onChange={setLedgerId} />
+          <Dropdown menu={{ items: settingsMenuItems, onClick: handleSettingsClick }}>
+            <Button type="text" size="small" icon={<SettingOutlined />} />
+          </Dropdown>
         </div>
-        <Dropdown menu={{ items: settingsMenuItems, onClick: handleSettingsClick }}>
-          <Button type="text" size="small" icon={<SettingOutlined />} />
-        </Dropdown>
       </div>
 
-      {/* Summary row */}
-      {isMobile ? (
+      {/* Dark hero card */}
+      <div style={{
+        background: '#18181B', borderRadius: 20, padding: isMobile ? '20px 20px 16px' : '24px 24px 20px',
+        color: '#fff', marginBottom: isMobile ? 10 : 14, position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Decorative blurs */}
         <div style={{
-          display: 'flex', justifyContent: 'space-between',
-          padding: '8px 8px 10px',
-          borderBottom: `1px solid ${colors.borderLight}`,
-          marginBottom: 2,
-        }}>
-          <div style={{ textAlign: 'center', flex: 1 }}>
-            <div style={{ fontSize: 10, color: colors.textTertiary }}>支出</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: colors.danger }}>{formatAmount(expense)}</div>
+          position: 'absolute', right: -40, top: -40, width: 160, height: 160,
+          background: 'rgba(255,255,255,0.05)', borderRadius: '50%', filter: 'blur(40px)',
+        }} />
+        <div style={{
+          position: 'absolute', left: -40, bottom: -40, width: 130, height: 130,
+          background: 'rgba(99,102,241,0.15)', borderRadius: '50%', filter: 'blur(40px)',
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Month selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+            <Button type="text" size="small" icon={<LeftOutlined />} onClick={prevMonth}
+              style={{ color: '#71717A' }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA' }}>{ymLabel}总支出</span>
+            <Button type="text" size="small" icon={<RightOutlined />} onClick={nextMonth}
+              style={{ color: '#71717A' }} />
           </div>
-          <div style={{ width: 1, background: colors.borderLight, margin: '4px 0' }} />
-          <div style={{ textAlign: 'center', flex: 1 }}>
-            <div style={{ fontSize: 10, color: colors.textTertiary }}>收入</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: colors.success }}>{formatAmount(income)}</div>
+
+          {/* Total expense - hero number */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 16 }}>
+            <span style={{ fontSize: 18, fontWeight: 500, color: '#A1A1AA' }}>¥</span>
+            <span style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em' }}>
+              {expense.toFixed(2)}
+            </span>
           </div>
-          <div style={{ width: 1, background: colors.borderLight, margin: '4px 0' }} />
-          <div style={{ textAlign: 'center', flex: 1 }}>
-            <div style={{ fontSize: 10, color: colors.textTertiary }}>结余</div>
-            <div style={{
-              fontSize: 17, fontWeight: 700,
-              color: balance > 0 ? colors.success : balance < 0 ? colors.danger : colors.textSecondary,
-            }}>
-              {balance === 0 ? '0' : (balance > 0 ? '+' : '') + formatAmount(balance)}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ display: 'flex', gap: 32, padding: '8px 4px 12px' }}>
+
+          {/* Income + balance row */}
+          <div style={{
+            display: 'flex', gap: 32,
+            paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)',
+          }}>
             <div>
-              <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>支出</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: colors.danger }}>{formatAmount(expense)}</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#71717A', marginBottom: 4 }}>总收入</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: '#34D399' }}>¥ {income.toFixed(2)}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>收入</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: colors.success }}>{formatAmount(income)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>结余</div>
-              <div style={{
-                fontSize: 22, fontWeight: 800,
-                color: balance > 0 ? colors.success : balance < 0 ? colors.danger : colors.textSecondary,
-              }}>
-                {balance === 0 ? '0' : (balance > 0 ? '+' : '') + formatAmount(balance)}
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#71717A', marginBottom: 4 }}>结余</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: '#F4F4F5' }}>
+                ¥ {(income - expense).toFixed(2)}
               </div>
             </div>
           </div>
-          <MonthlySummary ledgerId={currentLedgerId} yearMonth={yearMonth} compactMode />
         </div>
-      )}
+      </div>
 
       {/* Tabs */}
       <Tabs
@@ -200,12 +194,12 @@ export default function Accounting() {
         style={{
           position: 'fixed', right: isMobile ? 20 : 32, bottom: isMobile ? 24 : 32,
           width: 52, height: 52, borderRadius: '50%', border: 'none',
-          background: gradients.primary, color: '#fff', fontSize: 22,
+          background: '#18181B', color: '#fff', fontSize: 22,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', boxShadow: shadows.primaryStrong, zIndex: 100,
-          transition: 'transform 0.2s',
+          cursor: 'pointer', boxShadow: '0 6px 20px rgba(24,24,27,0.3)',
+          zIndex: 100, transition: 'transform 0.2s',
         }}
-        onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
+        onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.08)')}
         onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
       >
         <PlusOutlined />

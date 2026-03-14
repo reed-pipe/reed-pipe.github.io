@@ -1,14 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Modal, Segmented, AutoComplete, DatePicker, Grid, message, Input, Tag } from 'antd'
-import { DeleteOutlined, CalendarOutlined, LeftOutlined } from '@ant-design/icons'
+import { Grid, message } from 'antd'
+import { DeleteOutlined, CloseOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { AccTransaction, TransactionType } from '@/shared/db'
 import { useAccountingStore } from '../store'
-import { parseCalcExpression, formatAmount } from '../utils'
-import { colors } from '@/shared/theme'
+import { parseCalcExpression } from '../utils'
 
 const { useBreakpoint } = Grid
 
@@ -19,8 +18,6 @@ interface Props {
   editingTransaction?: AccTransaction | null
 }
 
-type Step = 'category' | 'amount'
-
 export default function QuickEntry({ open, onClose, ledgerId, editingTransaction }: Props) {
   const db = useDb()
   const notifyChanged = useDataChanged()
@@ -30,11 +27,8 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   const [type, setType] = useState<TransactionType>('expense')
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [expression, setExpression] = useState('')
-  const [note, setNote] = useState('')
-  const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState('')
-  const [date, setDate] = useState(dayjs())
-  const [step, setStep] = useState<Step>('category')
+  const [remark, setRemark] = useState('')
+  const [date, setDate] = useState(dayjs().format('YYYY-MM-DD'))
 
   const categories = useLiveQuery(
     () => db.accCategories.where('type').equals(type).sortBy('sortOrder'),
@@ -49,148 +43,156 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
       setType(editingTransaction.type)
       setCategoryId(editingTransaction.categoryId)
       setExpression(String(editingTransaction.amount))
-      setNote(editingTransaction.note)
-      setTags(editingTransaction.tags || [])
-      setDate(dayjs(editingTransaction.date))
-      setStep('amount')
+      setRemark(editingTransaction.note)
+      setDate(editingTransaction.date)
     } else {
       setType('expense')
       setCategoryId(null)
       setExpression('')
-      setNote('')
-      setTags([])
-      setDate(dayjs())
-      setStep('category')
+      setRemark('')
+      setDate(dayjs().format('YYYY-MM-DD'))
     }
   }, [editingTransaction, open])
 
-  const parsedAmount = useMemo(() => parseCalcExpression(expression), [expression])
-  const hasOperator = /[+\-×÷]/.test(expression)
-  const selectedCat = categories.find(c => c.id === categoryId)
+  useEffect(() => {
+    if (!editingTransaction && categories.length > 0 && categoryId === null) {
+      setCategoryId(categories[0]!.id)
+    }
+  }, [categories, categoryId, editingTransaction])
 
-  const handleKeyPress = useCallback((key: string) => {
-    if (key === '⌫') {
-      setExpression(prev => prev.slice(0, -1))
-    } else if (key === '=') {
-      if (parsedAmount !== null) setExpression(String(parsedAmount))
+  const parsedAmount = useMemo(() => parseCalcExpression(expression), [expression])
+
+  const handleKey = useCallback((key: string) => {
+    if (key === 'del') {
+      setExpression(prev => prev.length > 1 ? prev.slice(0, -1) : '')
+    } else if (key === '.') {
+      if (!expression.includes('.')) setExpression(prev => prev + '.')
+    } else if (key === '00') {
+      setExpression(prev => prev === '' || prev === '0' ? prev : prev + '00')
     } else {
       setExpression(prev => {
-        const lastChar = prev[prev.length - 1]
-        const isOp = (c: string) => '+-×÷'.includes(c)
-        if (isOp(key) && lastChar && isOp(lastChar)) return prev.slice(0, -1) + key
-        if (key === '.') {
-          const parts = prev.split(/[+\-×÷]/)
-          if ((parts[parts.length - 1] ?? '').includes('.')) return prev
+        if (prev === '0') return key
+        if (prev.includes('.')) {
+          const [, dec] = prev.split('.')
+          if (dec && dec.length >= 2) return prev
         }
+        if (prev.length >= 9) return prev
         return prev + key
       })
     }
-  }, [parsedAmount])
+  }, [expression])
 
-  const handleSelectCategory = (catId: number) => {
-    setCategoryId(catId)
-    setStep('amount')
-  }
-
-  const handleSubmit = async () => {
-    const amount = parsedAmount
+  const handleSave = async () => {
+    const amount = parsedAmount ?? parseFloat(expression)
     if (!amount || amount <= 0) { message.warning('请输入有效金额'); return }
     if (!categoryId) { message.warning('请选择分类'); return }
 
     if (editingTransaction) {
       await db.accTransactions.update(editingTransaction.id, {
-        type, categoryId, amount, note, tags, date: date.format('YYYY-MM-DD'),
+        type, categoryId, amount, note: remark, tags: editingTransaction.tags,
+        date,
       })
     } else {
       await db.accTransactions.add({
-        ledgerId, type, categoryId, amount, note, tags,
-        date: date.format('YYYY-MM-DD'), createdAt: Date.now(),
+        ledgerId, type, categoryId, amount, note: remark, tags: [],
+        date, createdAt: Date.now(),
       })
     }
-    if (note.trim()) useAccountingStore.getState().addNoteHistory(note.trim(), db)
+    if (remark.trim()) useAccountingStore.getState().addNoteHistory(remark.trim(), db)
     notifyChanged()
     message.success(editingTransaction ? '已更新' : '记账成功')
     onClose()
   }
 
-  const handleAddTag = () => {
-    const t = tagInput.trim()
-    if (t && !tags.includes(t)) setTags([...tags, t])
-    setTagInput('')
-  }
+  const dateLabel = date === dayjs().format('YYYY-MM-DD') ? '今天'
+    : date === dayjs().subtract(1, 'day').format('YYYY-MM-DD') ? '昨天'
+    : date.slice(5).replace('-', '/')
 
-  // ===== MOBILE: Full-screen two-step flow =====
+  if (!open) return null
+
+  // ===== MOBILE LAYOUT: Bottom sheet =====
   if (isMobile) {
-    if (!open) return null
-
-    // --- STEP 1: Category Selection ---
-    if (step === 'category') {
-      return (
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          onClick={onClose}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+          }}
+        />
+        {/* Sheet */}
         <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1001,
+          background: '#fff', borderRadius: '24px 24px 0 0',
           display: 'flex', flexDirection: 'column',
-          background: '#FFF8E1',
+          height: '85vh',
+          boxShadow: '0 -10px 40px rgba(0,0,0,0.1)',
+          overflow: 'hidden',
         }}>
-          {/* Top bar */}
+          {/* Drag handle */}
+          <div onClick={onClose} style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 6px', flexShrink: 0 }}>
+            <div style={{ width: 40, height: 5, borderRadius: 3, background: '#E4E4E7' }} />
+          </div>
+
+          {/* Header: type toggle + close */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '14px 16px 10px', flexShrink: 0,
+            padding: '0 20px 12px', flexShrink: 0,
           }}>
+            <div style={{ display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3 }}>
+              {(['expense', 'income'] as const).map(t => (
+                <button key={t} onClick={() => { setType(t); setCategoryId(null) }} style={{
+                  padding: '6px 20px', fontSize: 13, fontWeight: 600, border: 'none',
+                  borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s',
+                  background: type === t ? '#fff' : 'transparent',
+                  color: type === t ? '#18181B' : '#A1A1AA',
+                  boxShadow: type === t ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}>
+                  {t === 'expense' ? '支出' : '收入'}
+                </button>
+              ))}
+            </div>
             <button onClick={onClose} style={{
-              background: 'none', border: 'none', fontSize: 15,
-              color: '#8D6E00', cursor: 'pointer', padding: '4px 0',
+              width: 32, height: 32, borderRadius: '50%', border: 'none',
+              background: '#F4F4F5', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
             }}>
-              取消
+              <CloseOutlined style={{ fontSize: 14 }} />
             </button>
-            <Segmented
-              size="small"
-              value={type}
-              onChange={v => { setType(v as TransactionType); setCategoryId(null) }}
-              options={[
-                { label: '支出', value: 'expense' },
-                { label: '收入', value: 'income' },
-              ]}
-              style={{ background: 'rgba(255,255,255,0.6)' }}
-            />
-            <div style={{ width: 36 }} />
           </div>
 
           {/* Category grid */}
-          <div style={{
-            flex: 1, overflowY: 'auto', padding: '8px 12px',
-            WebkitOverflowScrolling: 'touch',
-          }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 8px' }}>
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 12,
+              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '16px 12px',
             }}>
               {categories.map(cat => {
                 const selected = categoryId === cat.id
                 return (
-                  <div
-                    key={cat.id}
-                    onClick={() => handleSelectCategory(cat.id)}
-                    style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      gap: 6, padding: '12px 4px', cursor: 'pointer',
-                    }}
-                  >
+                  <div key={cat.id} onClick={() => setCategoryId(cat.id)}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                     <div style={{
-                      width: 52, height: 52, borderRadius: '50%',
-                      background: selected ? cat.color : 'rgba(255,255,255,0.85)',
+                      width: 52, height: 52, borderRadius: 16,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 26,
+                      fontSize: 26, transition: 'all 0.2s',
+                      background: selected
+                        ? (type === 'expense' ? '#18181B' : '#10B981')
+                        : '#FAFAFA',
                       boxShadow: selected
-                        ? `0 4px 12px ${cat.color}40`
-                        : '0 2px 8px rgba(0,0,0,0.06)',
-                      transition: 'all 0.15s',
+                        ? (type === 'expense' ? '0 4px 12px rgba(24,24,27,0.2)' : '0 4px 12px rgba(16,185,129,0.2)')
+                        : 'none',
+                      transform: selected ? 'scale(1.05)' : 'scale(1)',
+                      // For selected state, apply a subtle filter to make emoji pop
+                      filter: selected ? 'brightness(1.1) saturate(1.2)' : 'none',
                     }}>
                       {cat.emoji}
                     </div>
                     <span style={{
-                      fontSize: 12, color: selected ? cat.color : '#5D4E00',
-                      fontWeight: selected ? 600 : 400,
+                      fontSize: 11, fontWeight: selected ? 700 : 500,
+                      color: selected ? '#18181B' : '#71717A',
                     }}>
                       {cat.name}
                     </span>
@@ -199,275 +201,249 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
               })}
             </div>
           </div>
-        </div>
-      )
-    }
 
-    // --- STEP 2: Amount Entry ---
-    return (
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        display: 'flex', flexDirection: 'column',
-        background: '#fff',
-      }}>
-        {/* Top bar: back + category info + date */}
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          padding: '12px 12px 8px', flexShrink: 0,
-          borderBottom: `1px solid ${colors.borderLight}`,
-        }}>
-          <button onClick={() => setStep('category')} style={{
-            background: 'none', border: 'none', fontSize: 18,
-            color: colors.textSecondary, cursor: 'pointer', padding: '4px 8px 4px 0',
-            display: 'flex', alignItems: 'center',
-          }}>
-            <LeftOutlined />
-          </button>
-          {/* Selected category - tappable to go back */}
-          <div
-            onClick={() => setStep('category')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              flex: 1, cursor: 'pointer',
-            }}
-          >
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: selectedCat ? `${selectedCat.color}15` : '#f5f5f5',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20,
-            }}>
-              {selectedCat?.emoji ?? '💰'}
-            </div>
-            <span style={{ fontSize: 15, fontWeight: 600, color: colors.text }}>
-              {selectedCat?.name ?? '选择分类'}
-            </span>
-          </div>
-          <DatePicker
-            value={date}
-            onChange={d => d && setDate(d)}
-            allowClear={false}
-            size="small"
-            style={{ width: 105 }}
-            suffixIcon={<CalendarOutlined style={{ fontSize: 12 }} />}
-          />
-        </div>
-
-        {/* Amount display area */}
-        <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          justifyContent: 'center', padding: '0 20px',
-        }}>
-          {/* Amount */}
-          <div style={{ textAlign: 'right' }}>
-            {hasOperator && parsedAmount !== null && (
-              <div style={{ fontSize: 14, color: colors.textTertiary, marginBottom: 4 }}>
-                = {formatAmount(parsedAmount)}
-              </div>
-            )}
-            <div style={{
-              fontSize: 42, fontWeight: 800, letterSpacing: '-0.02em',
-              color: type === 'expense' ? colors.danger : colors.success,
-              lineHeight: 1.1,
-            }}>
-              {expression || '0'}
-            </div>
-          </div>
-
-          {/* Note inline */}
-          <div style={{ marginTop: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
-            <AutoComplete
-              value={note}
-              onChange={setNote}
-              options={noteHistory.filter(n => n.toLowerCase().includes(note.toLowerCase())).map(n => ({ value: n }))}
-              placeholder="添加备注..."
-              size="small"
-              style={{ flex: 1 }}
-              variant="borderless"
-            />
-          </div>
-
-          {/* Tags inline */}
-          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            {tags.map(t => (
-              <Tag key={t} closable onClose={() => setTags(tags.filter(x => x !== t))}
-                style={{ margin: 0, fontSize: 11, borderRadius: 6 }}>{t}</Tag>
-            ))}
-            <Input
-              size="small" value={tagInput}
-              onChange={e => setTagInput(e.target.value)} onPressEnter={handleAddTag}
-              placeholder="标签回车" variant="borderless"
-              style={{ width: 80, fontSize: 12 }}
-            />
-          </div>
-        </div>
-
-        {/* Calculator keypad */}
-        <div style={{
-          flexShrink: 0, padding: '4px 6px',
-          background: '#F7F7F8', borderTop: `1px solid ${colors.borderLight}`,
-        }}>
+          {/* Bottom: Amount + Remark + Keypad */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5,
+            flexShrink: 0, background: '#FAFAFA',
+            borderRadius: '24px 24px 0 0',
+            boxShadow: '0 -8px 30px rgba(0,0,0,0.04)',
           }}>
-            {['7','8','9','⌫','4','5','6','+','1','2','3','-','.','0','=','×'].map(key => {
-              const isOp = '+-×÷'.includes(key)
-              const isDelete = key === '⌫'
-              const isEquals = key === '='
-
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleKeyPress(key)}
+            {/* Amount + remark */}
+            <div style={{ padding: '16px 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: 20, fontWeight: 500, color: '#A1A1AA' }}>¥</span>
+                <span style={{ fontSize: 36, fontWeight: 700, color: '#18181B', letterSpacing: '-0.02em' }}>
+                  {expression || '0'}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: '#fff', padding: '10px 14px', borderRadius: 14,
+                border: '1px solid #F4F4F5',
+              }}>
+                <span style={{ fontSize: 14, color: '#A1A1AA' }}>✏️</span>
+                <input
+                  value={remark}
+                  onChange={e => setRemark(e.target.value)}
+                  placeholder="添加备注..."
+                  maxLength={30}
+                  list="note-history"
                   style={{
-                    height: 50, border: 'none', borderRadius: 10, fontSize: 20,
-                    fontWeight: isOp ? 700 : 500,
-                    background: isOp ? '#FFE0B2' : isEquals ? '#E3F2FD' : isDelete ? '#FFEBEE' : '#fff',
-                    color: isOp ? '#E65100' : isEquals ? '#1565C0' : isDelete ? colors.danger : colors.text,
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                    flex: 1, border: 'none', outline: 'none', fontSize: 13,
+                    color: '#18181B', background: 'transparent',
                   }}
-                >
-                  {isDelete ? <DeleteOutlined style={{ fontSize: 18 }} /> : key}
-                </button>
-              )
-            })}
-          </div>
+                />
+                <datalist id="note-history">
+                  {noteHistory.map(n => <option key={n} value={n} />)}
+                </datalist>
+              </div>
+            </div>
 
-          {/* Submit row */}
-          <div style={{ marginTop: 5 }}>
-            <button
-              onClick={handleSubmit}
-              style={{
-                width: '100%', height: 50, border: 'none', borderRadius: 10,
-                fontSize: 17, fontWeight: 700,
-                background: type === 'expense'
-                  ? 'linear-gradient(135deg, #F5722D, #FF9A5C)'
-                  : 'linear-gradient(135deg, #059669, #34D399)',
-                color: '#fff', cursor: 'pointer',
+            {/* Keypad */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 6, padding: '8px 16px 16px',
+            }}>
+              {/* Row 1 */}
+              <KeyBtn onClick={() => handleKey('1')}>1</KeyBtn>
+              <KeyBtn onClick={() => handleKey('2')}>2</KeyBtn>
+              <KeyBtn onClick={() => handleKey('3')}>3</KeyBtn>
+              {/* Date button */}
+              <div style={{ position: 'relative' }}>
+                <div style={{
+                  background: '#fff', borderRadius: 16, height: '100%', minHeight: 48,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: 1, border: '1px solid #F4F4F5',
+                }}>
+                  <span style={{ fontSize: 14 }}>📅</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
+                </div>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  style={{
+                    position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer',
+                  }}
+                />
+              </div>
+
+              {/* Row 2 */}
+              <KeyBtn onClick={() => handleKey('4')}>4</KeyBtn>
+              <KeyBtn onClick={() => handleKey('5')}>5</KeyBtn>
+              <KeyBtn onClick={() => handleKey('6')}>6</KeyBtn>
+              <KeyBtn onClick={() => handleKey('del')} color="#71717A">
+                <DeleteOutlined style={{ fontSize: 20 }} />
+              </KeyBtn>
+
+              {/* Row 3 */}
+              <KeyBtn onClick={() => handleKey('7')}>7</KeyBtn>
+              <KeyBtn onClick={() => handleKey('8')}>8</KeyBtn>
+              <KeyBtn onClick={() => handleKey('9')}>9</KeyBtn>
+              {/* 完成 button spans 2 rows */}
+              <button onClick={handleSave} style={{
+                gridRow: 'span 2', borderRadius: 16, border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 700, color: '#fff', cursor: 'pointer',
+                background: type === 'expense' ? '#18181B' : '#10B981',
                 boxShadow: type === 'expense'
-                  ? '0 2px 12px rgba(245,114,45,0.3)'
-                  : '0 2px 12px rgba(5,150,105,0.3)',
-              }}
-            >
-              {editingTransaction ? '更新' : parsedAmount && parsedAmount > 0 ? `完成 ¥${formatAmount(parsedAmount)}` : '完成'}
-            </button>
-          </div>
+                  ? '0 4px 12px rgba(24,24,27,0.2)'
+                  : '0 4px 12px rgba(16,185,129,0.2)',
+              }}>
+                完成
+              </button>
 
-          {/* Safe area spacer for iPhone */}
-          <div style={{ height: 'env(safe-area-inset-bottom, 8px)' }} />
+              {/* Row 4 */}
+              <KeyBtn onClick={() => handleKey('.')}>.</KeyBtn>
+              <KeyBtn onClick={() => handleKey('0')}>0</KeyBtn>
+              <KeyBtn onClick={() => handleKey('00')}>00</KeyBtn>
+            </div>
+
+            {/* Safe area */}
+            <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
-  // ===== DESKTOP: Modal (unchanged) =====
-  const desktopContent = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Segmented
-        block value={type}
-        onChange={v => { setType(v as TransactionType); setCategoryId(null) }}
-        options={[{ label: '支出', value: 'expense' }, { label: '收入', value: 'income' }]}
-      />
-
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
-        maxHeight: 200, overflowY: 'auto',
-      }}>
-        {categories.map(cat => (
-          <div
-            key={cat.id} onClick={() => setCategoryId(cat.id)}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              gap: 4, padding: '10px 4px', borderRadius: 12, cursor: 'pointer',
-              background: categoryId === cat.id ? `${cat.color}15` : colors.bg,
-              border: `2px solid ${categoryId === cat.id ? cat.color : 'transparent'}`,
-            }}
-          >
-            <span style={{ fontSize: 24 }}>{cat.emoji}</span>
-            <span style={{ fontSize: 11, color: categoryId === cat.id ? cat.color : colors.textSecondary }}>
-              {cat.name}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{
-        padding: '12px 16px', borderRadius: 12,
-        background: type === 'expense' ? '#FEF2F2' : '#ECFDF5', textAlign: 'right',
-      }}>
-        <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>
-          {parsedAmount !== null && hasOperator ? `= ${formatAmount(parsedAmount)}` : ''}
-        </div>
-        <div style={{ fontSize: 32, fontWeight: 800, color: type === 'expense' ? colors.danger : colors.success, minHeight: 42 }}>
-          {expression || '0'}
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-        {['7','8','9','÷','4','5','6','×','1','2','3','-','.','0','⌫','+'].map(key => (
-          <button
-            key={key} onClick={() => handleKeyPress(key)}
-            style={{
-              height: 44, border: 'none', borderRadius: 10, fontSize: 18,
-              fontWeight: '+-×÷'.includes(key) ? 700 : 500,
-              background: '+-×÷'.includes(key) ? colors.primaryBg : key === '⌫' ? colors.dangerBg : '#fff',
-              color: '+-×÷'.includes(key) ? colors.primary : key === '⌫' ? colors.danger : colors.text,
-              cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-            }}
-          >
-            {key === '⌫' ? <DeleteOutlined /> : key}
-          </button>
-        ))}
-        {hasOperator && (
-          <button onClick={() => handleKeyPress('=')} style={{
-            gridColumn: '1 / -1', height: 38, border: 'none', borderRadius: 10,
-            fontSize: 16, fontWeight: 600,
-            background: colors.primaryBg, color: colors.primary, cursor: 'pointer',
-          }}>
-            = {parsedAmount !== null ? formatAmount(parsedAmount) : ''}
-          </button>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        <AutoComplete
-          value={note} onChange={setNote}
-          options={noteHistory.filter(n => n.toLowerCase().includes(note.toLowerCase())).map(n => ({ value: n }))}
-          placeholder="备注..." style={{ flex: 1 }}
-        />
-        <DatePicker value={date} onChange={d => d && setDate(d)} allowClear={false} style={{ width: 130 }} />
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        {tags.map(t => (
-          <Tag key={t} closable onClose={() => setTags(tags.filter(x => x !== t))} style={{ margin: 0 }}>{t}</Tag>
-        ))}
-        <Input size="small" value={tagInput}
-          onChange={e => setTagInput(e.target.value)} onPressEnter={handleAddTag}
-          placeholder="标签+回车" style={{ width: 100 }}
-        />
-      </div>
-
-      <button onClick={handleSubmit} style={{
-        height: 48, border: 'none', borderRadius: 14,
-        background: type === 'expense'
-          ? 'linear-gradient(135deg, #F5722D, #FF9A5C)'
-          : 'linear-gradient(135deg, #059669, #34D399)',
-        color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
-        boxShadow: type === 'expense' ? '0 4px 16px rgba(245,114,45,0.3)' : '0 4px 16px rgba(5,150,105,0.3)',
-      }}>
-        {editingTransaction ? '更新' : parsedAmount && parsedAmount > 0 ? `记一笔 ¥${formatAmount(parsedAmount)}` : '完成'}
-      </button>
-    </div>
-  )
-
+  // ===== DESKTOP: Modal-like =====
   return (
-    <Modal
-      title={editingTransaction ? '编辑记录' : '记一笔'}
-      open={open} onCancel={onClose} footer={null} width={420}
+    <>
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.3)',
+      }} />
+      <div style={{
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        zIndex: 1001, background: '#fff', borderRadius: 24, width: 420, maxHeight: '85vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px' }}>
+          <div style={{ display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3 }}>
+            {(['expense', 'income'] as const).map(t => (
+              <button key={t} onClick={() => { setType(t); setCategoryId(null) }} style={{
+                padding: '6px 24px', fontSize: 13, fontWeight: 600, border: 'none',
+                borderRadius: 10, cursor: 'pointer',
+                background: type === t ? '#fff' : 'transparent',
+                color: type === t ? '#18181B' : '#A1A1AA',
+                boxShadow: type === t ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}>
+                {t === 'expense' ? '支出' : '收入'}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} style={{
+            width: 32, height: 32, borderRadius: '50%', border: 'none',
+            background: '#F4F4F5', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
+          }}>
+            <CloseOutlined style={{ fontSize: 14 }} />
+          </button>
+        </div>
+
+        {/* Categories */}
+        <div style={{ overflowY: 'auto', padding: '4px 20px 12px', maxHeight: 220 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px 10px' }}>
+            {categories.map(cat => {
+              const selected = categoryId === cat.id
+              return (
+                <div key={cat.id} onClick={() => setCategoryId(cat.id)}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 16,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
+                    background: selected ? (type === 'expense' ? '#18181B' : '#10B981') : '#FAFAFA',
+                    boxShadow: selected ? '0 4px 12px rgba(0,0,0,0.15)' : 'none',
+                    transform: selected ? 'scale(1.05)' : 'scale(1)', transition: 'all 0.2s',
+                  }}>
+                    {cat.emoji}
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: selected ? 700 : 500, color: selected ? '#18181B' : '#71717A' }}>
+                    {cat.name}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Amount + Remark + Keypad */}
+        <div style={{ flexShrink: 0, background: '#FAFAFA', borderRadius: '24px 24px 0 0' }}>
+          <div style={{ padding: '14px 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontSize: 20, fontWeight: 500, color: '#A1A1AA' }}>¥</span>
+              <span style={{ fontSize: 36, fontWeight: 700, color: '#18181B' }}>{expression || '0'}</span>
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#fff', padding: '10px 14px', borderRadius: 14, border: '1px solid #F4F4F5',
+            }}>
+              <span style={{ fontSize: 14 }}>✏️</span>
+              <input value={remark} onChange={e => setRemark(e.target.value)}
+                placeholder="添加备注..." maxLength={30}
+                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: '#18181B', background: 'transparent' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, padding: '8px 16px 16px' }}>
+            <KeyBtn onClick={() => handleKey('1')}>1</KeyBtn>
+            <KeyBtn onClick={() => handleKey('2')}>2</KeyBtn>
+            <KeyBtn onClick={() => handleKey('3')}>3</KeyBtn>
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                background: '#fff', borderRadius: 16, height: '100%', minHeight: 48,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 1, border: '1px solid #F4F4F5',
+              }}>
+                <span style={{ fontSize: 14 }}>📅</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
+              </div>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+              />
+            </div>
+            <KeyBtn onClick={() => handleKey('4')}>4</KeyBtn>
+            <KeyBtn onClick={() => handleKey('5')}>5</KeyBtn>
+            <KeyBtn onClick={() => handleKey('6')}>6</KeyBtn>
+            <KeyBtn onClick={() => handleKey('del')} color="#71717A"><DeleteOutlined style={{ fontSize: 20 }} /></KeyBtn>
+            <KeyBtn onClick={() => handleKey('7')}>7</KeyBtn>
+            <KeyBtn onClick={() => handleKey('8')}>8</KeyBtn>
+            <KeyBtn onClick={() => handleKey('9')}>9</KeyBtn>
+            <button onClick={handleSave} style={{
+              gridRow: 'span 2', borderRadius: 16, border: 'none',
+              fontSize: 16, fontWeight: 700, color: '#fff', cursor: 'pointer',
+              background: type === 'expense' ? '#18181B' : '#10B981',
+              boxShadow: type === 'expense' ? '0 4px 12px rgba(24,24,27,0.2)' : '0 4px 12px rgba(16,185,129,0.2)',
+            }}>
+              完成
+            </button>
+            <KeyBtn onClick={() => handleKey('.')}>.</KeyBtn>
+            <KeyBtn onClick={() => handleKey('0')}>0</KeyBtn>
+            <KeyBtn onClick={() => handleKey('00')}>00</KeyBtn>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function KeyBtn({ children, onClick, color }: { children: React.ReactNode; onClick: () => void; color?: string }) {
+  return (
+    <button onClick={onClick} style={{
+      background: '#fff', borderRadius: 16, border: '1px solid #F4F4F5',
+      padding: '12px 0', fontSize: 22, fontWeight: 600,
+      color: color ?? '#18181B', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      transition: 'all 0.1s',
+    }}
+      onPointerDown={e => { e.currentTarget.style.transform = 'scale(0.95)'; e.currentTarget.style.background = '#FAFAFA' }}
+      onPointerUp={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#fff' }}
+      onPointerLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#fff' }}
     >
-      {desktopContent}
-    </Modal>
+      {children}
+    </button>
   )
 }
