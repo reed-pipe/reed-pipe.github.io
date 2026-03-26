@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import type { TransactionType } from '@/shared/db'
 import { formatAmount, getMonthRange } from '../utils'
+import { useTheme } from '@/shared/hooks/useTheme'
 
 const { useBreakpoint } = Grid
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function StatsCharts({ ledgerId, yearMonth }: Props) {
+  const { colors, isDark } = useTheme()
   const db = useDb()
   const screens = useBreakpoint()
   const isMobile = !screens.md
@@ -92,7 +94,7 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
       {/* Type toggle */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{
-          display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3,
+          display: 'flex', background: colors.borderLight, borderRadius: 12, padding: 3,
           width: '100%', maxWidth: 240,
         }}>
           {(['expense', 'income'] as TransactionType[]).map(t => (
@@ -102,8 +104,8 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
               style={{
                 flex: 1, padding: '6px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                 border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                background: txnType === t ? '#fff' : 'transparent',
-                color: txnType === t ? '#18181B' : '#A1A1AA',
+                background: txnType === t ? colors.bgElevated : 'transparent',
+                color: txnType === t ? colors.text : colors.textTertiary,
                 boxShadow: txnType === t ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               }}
             >
@@ -115,16 +117,16 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
 
       {/* Big total */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0 4px' }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: '#71717A', letterSpacing: '0.05em', marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: colors.textSecondary, letterSpacing: '0.05em', marginBottom: 6 }}>
           总{isExpense ? '支出' : '收入'}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
-          <span style={{ fontSize: 22, fontWeight: 500, color: '#A1A1AA' }}>¥</span>
-          <span style={{ fontSize: 40, fontWeight: 700, color: '#18181B', letterSpacing: '-0.02em' }}>
+          <span style={{ fontSize: 22, fontWeight: 500, color: colors.textTertiary }}>¥</span>
+          <span style={{ fontSize: 40, fontWeight: 700, color: colors.text, letterSpacing: '-0.02em' }}>
             {totalAmount.toFixed(2)}
           </span>
         </div>
-        <div style={{ fontSize: 12, fontWeight: 500, color: '#A1A1AA', marginTop: 2 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: colors.textTertiary, marginTop: 2 }}>
           共 {txnCount} 笔
         </div>
       </div>
@@ -132,7 +134,7 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
       {/* Chart view toggle: 排行 | 趋势 */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{
-          display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3,
+          display: 'flex', background: colors.borderLight, borderRadius: 12, padding: 3,
           width: '100%', maxWidth: 180,
         }}>
           {([{ key: 'rank' as const, label: '排行' }, { key: 'trend' as const, label: '趋势' }]).map(v => (
@@ -142,8 +144,8 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
               style={{
                 flex: 1, padding: '5px 14px', borderRadius: 10, fontSize: 12, fontWeight: 600,
                 border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                background: chartView === v.key ? '#fff' : 'transparent',
-                color: chartView === v.key ? '#18181B' : '#A1A1AA',
+                background: chartView === v.key ? colors.bgElevated : 'transparent',
+                color: chartView === v.key ? colors.text : colors.textTertiary,
                 boxShadow: chartView === v.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               }}
             >
@@ -156,24 +158,24 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
       {chartView === 'rank' ? (
         /* Rank card */
         <div style={{
-          background: '#fff', borderRadius: 24, padding: isMobile ? 16 : 20,
-          border: '1px solid rgba(244,244,245,0.8)',
+          background: colors.bgElevated, borderRadius: 24, padding: isMobile ? 16 : 20,
+          border: `1px solid ${colors.borderLight}`,
           boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 0.5px 2px rgba(0,0,0,0.02)',
         }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#18181B', marginBottom: 20, marginTop: 0 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginBottom: 20, marginTop: 0 }}>
             分类排行
           </h3>
 
           {rankData.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0' }}>
               <div style={{
-                width: 56, height: 56, borderRadius: '50%', background: '#FAFAFA',
+                width: 56, height: 56, borderRadius: '50%', background: colors.bg,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 marginBottom: 12, fontSize: 24,
               }}>
                 📊
               </div>
-              <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA' }}>暂无数据</span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: colors.textTertiary }}>暂无数据</span>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -182,7 +184,7 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
                   {/* Icon */}
                   <div style={{
                     width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                    background: isExpense ? '#F4F4F5' : '#ECFDF5',
+                    background: isExpense ? colors.borderLight : colors.successBg,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 20,
                   }}>
@@ -191,23 +193,23 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>
                         {item.name}{' '}
-                        <span style={{ color: '#A1A1AA', fontWeight: 500, marginLeft: 4 }}>
+                        <span style={{ color: colors.textTertiary, fontWeight: 500, marginLeft: 4 }}>
                           {item.percent.toFixed(1)}%
                         </span>
                       </span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#18181B' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: colors.text }}>
                         ¥{formatAmount(item.amount)}
                       </span>
                     </div>
                     {/* Progress bar */}
                     <div style={{
-                      height: 8, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden',
+                      height: 8, borderRadius: 9999, background: colors.borderLight, overflow: 'hidden',
                     }}>
                       <div style={{
                         height: '100%', borderRadius: 9999,
-                        background: isExpense ? '#18181B' : '#10B981',
+                        background: isExpense ? (isDark ? '#242424' : '#18181B') : '#10B981',
                         width: `${item.barWidth}%`,
                         transition: 'width 0.6s ease-out',
                       }} />
@@ -231,6 +233,7 @@ function TrendChart({ dailyData, isExpense, isMobile }: {
   isExpense: boolean
   isMobile: boolean
 }) {
+  const { colors, isDark } = useTheme()
   const [containerWidth, setContainerWidth] = useState(300)
   const [tooltip, setTooltip] = useState<{ day: number; amount: number; x: number; y: number } | null>(null)
   const roRef = useRef<ResizeObserver | null>(null)
@@ -256,7 +259,7 @@ function TrendChart({ dailyData, isExpense, isMobile }: {
   const PADDING_RIGHT = 8
   const chartWidth = containerWidth - PADDING_LEFT - PADDING_RIGHT
   const chartHeight = CHART_H - PADDING_TOP - PADDING_BOTTOM
-  const barColor = isExpense ? '#18181B' : '#10B981'
+  const barColor = isExpense ? (isDark ? '#242424' : '#18181B') : '#10B981'
 
   const maxAmount = useMemo(() => Math.max(...dailyData.map(d => d.amount), 1), [dailyData])
   const barGap = 2
@@ -272,19 +275,19 @@ function TrendChart({ dailyData, isExpense, isMobile }: {
     <div
       ref={measuredRef}
       style={{
-        background: '#fff', borderRadius: 24, padding: isMobile ? 16 : 20,
-        border: '1px solid rgba(244,244,245,0.8)',
+        background: colors.bgElevated, borderRadius: 24, padding: isMobile ? 16 : 20,
+        border: `1px solid ${colors.borderLight}`,
         boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 0.5px 2px rgba(0,0,0,0.02)',
         position: 'relative',
       }}
     >
-      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#18181B', marginBottom: 12, marginTop: 0 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginBottom: 12, marginTop: 0 }}>
         每日趋势
       </h3>
 
       <svg width={containerWidth - (isMobile ? 32 : 40)} height={CHART_H} style={{ display: 'block' }}>
         {/* Max value label */}
-        <text x={PADDING_LEFT} y={PADDING_TOP - 8} fontSize={10} fill="#A1A1AA">
+        <text x={PADDING_LEFT} y={PADDING_TOP - 8} fontSize={10} fill={colors.textTertiary}>
           ¥{formatAmount(maxAmount)}
         </text>
 
@@ -329,7 +332,7 @@ function TrendChart({ dailyData, isExpense, isMobile }: {
               y={PADDING_TOP + chartHeight + 16}
               textAnchor="middle"
               fontSize={10}
-              fill="#A1A1AA"
+              fill={colors.textTertiary}
             >
               {day}
             </text>
@@ -345,7 +348,7 @@ function TrendChart({ dailyData, isExpense, isMobile }: {
               width={80}
               height={24}
               rx={6}
-              fill="#18181B"
+              fill={isDark ? '#333' : '#18181B'}
             />
             <text
               x={Math.max(44, Math.min(tooltip.x, (containerWidth - (isMobile ? 32 : 40)) - 44))}

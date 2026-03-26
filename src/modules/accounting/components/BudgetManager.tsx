@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import { getMonthRange, formatAmount } from '../utils'
+import { useTheme } from '@/shared/hooks/useTheme'
 
 const { useBreakpoint } = Grid
 
@@ -20,6 +21,7 @@ function budgetColor(percent: number): string {
 }
 
 export default function BudgetManager({ ledgerId, yearMonth }: Props) {
+  const { colors, isDark } = useTheme()
   const db = useDb()
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
@@ -167,8 +169,8 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={openSettings} style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 14px', borderRadius: 10, border: '1px solid #E4E4E7',
-          background: '#fff', fontSize: 13, fontWeight: 600, color: '#18181B',
+          padding: '6px 14px', borderRadius: 10, border: `1px solid ${colors.border}`,
+          background: colors.bgElevated, fontSize: 13, fontWeight: 600, color: colors.text,
           cursor: 'pointer',
         }}>
           ⚙️ 设置预算
@@ -178,19 +180,19 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
       {!totalBudget ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0',
-          background: '#fff', borderRadius: 24, border: '1px solid #F4F4F5',
+          background: colors.bgElevated, borderRadius: 24, border: `1px solid ${colors.borderLight}`,
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}>
           <div style={{
-            width: 56, height: 56, borderRadius: '50%', background: '#FAFAFA',
+            width: 56, height: 56, borderRadius: '50%', background: colors.bg,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 12, fontSize: 28,
           }}>
             💰
           </div>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#A1A1AA', marginBottom: 16 }}>暂未设置预算</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: colors.textTertiary, marginBottom: 16 }}>暂未设置预算</span>
           <button onClick={openSettings} style={{
-            background: '#18181B', color: '#fff', borderRadius: 12,
+            background: isDark ? '#242424' : '#18181B', color: '#fff', borderRadius: 12,
             padding: '10px 24px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
           }}>
             设置预算
@@ -201,16 +203,16 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
           {/* Total budget card */}
           <div style={{
             padding: isMobile ? 16 : 20, borderRadius: 20,
-            background: '#fff', border: '1px solid #F4F4F5',
+            background: colors.bgElevated, border: `1px solid ${colors.borderLight}`,
             boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#18181B' }}>月度总预算</span>
-              <span style={{ fontSize: 13, color: '#A1A1AA' }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: colors.text }}>月度总预算</span>
+              <span style={{ fontSize: 13, color: colors.textTertiary }}>
                 ¥{formatAmount(totalBudget.amount)}
               </span>
             </div>
-            <div style={{ height: 12, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden', marginBottom: 10 }}>
+            <div style={{ height: 12, borderRadius: 9999, background: colors.borderLight, overflow: 'hidden', marginBottom: 10 }}>
               <div style={{
                 height: '100%', borderRadius: 9999,
                 background: budgetColor(totalPercent),
@@ -219,7 +221,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
               }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: '#71717A' }}>
+              <span style={{ fontSize: 12, color: colors.textSecondary }}>
                 已花 ¥{formatAmount(totalExpense)} ({totalPercent}%)
               </span>
               <span style={{
@@ -241,25 +243,25 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
             return (
               <div key={cat.id} style={{
                 padding: isMobile ? '12px 14px' : '14px 16px',
-                borderRadius: 16, background: '#fff',
-                border: '1px solid #F4F4F5',
+                borderRadius: 16, background: colors.bgElevated,
+                border: `1px solid ${colors.borderLight}`,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{
-                      width: 32, height: 32, borderRadius: 10, background: '#F4F4F5',
+                      width: 32, height: 32, borderRadius: 10, background: colors.borderLight,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
                     }}>
                       {cat.emoji}
                     </div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>{cat.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>{cat.name}</span>
                   </div>
-                  <span style={{ fontSize: 12, color: '#71717A' }}>
+                  <span style={{ fontSize: 12, color: colors.textSecondary }}>
                     ¥{formatAmount(spent)} / ¥{formatAmount(budget)}
                   </span>
                 </div>
-                <div style={{ height: 8, borderRadius: 9999, background: '#F4F4F5', overflow: 'hidden' }}>
+                <div style={{ height: 8, borderRadius: 9999, background: colors.borderLight, overflow: 'hidden' }}>
                   <div style={{
                     height: '100%', borderRadius: 9999,
                     background: budgetColor(percent),
@@ -269,7 +271,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
                 </div>
                 <span style={{
                   fontSize: 11, marginTop: 4, display: 'block',
-                  color: remaining >= 0 ? '#A1A1AA' : '#EF4444',
+                  color: remaining >= 0 ? colors.textTertiary : '#EF4444',
                 }}>
                   {remaining >= 0 ? `剩余 ¥${formatAmount(remaining)}` : `超支 ¥${formatAmount(-remaining)}`}
                 </span>
@@ -292,7 +294,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
           />
           <div style={{
             position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1001,
-            background: '#fff', borderRadius: '24px 24px 0 0',
+            background: colors.bgElevated, borderRadius: '24px 24px 0 0',
             maxHeight: '80vh', display: 'flex', flexDirection: 'column',
             boxShadow: '0 -10px 40px rgba(0,0,0,0.1)', overflow: 'hidden',
             transform: visible ? 'translateY(0)' : 'translateY(100%)',
@@ -300,7 +302,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
           }}>
             {/* Drag handle */}
             <div onClick={handleCloseSettings} style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px', flexShrink: 0 }}>
-              <div style={{ width: 40, height: 5, borderRadius: 3, background: '#E4E4E7' }} />
+              <div style={{ width: 40, height: 5, borderRadius: 3, background: colors.border }} />
             </div>
 
             {/* Header */}
@@ -308,11 +310,11 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '0 20px 12px', flexShrink: 0,
             }}>
-              <span style={{ fontSize: 17, fontWeight: 700, color: '#18181B' }}>设置预算</span>
+              <span style={{ fontSize: 17, fontWeight: 700, color: colors.text }}>设置预算</span>
               <button onClick={handleCloseSettings} style={{
                 width: 32, height: 32, borderRadius: '50%', border: 'none',
-                background: '#F4F4F5', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
+                background: colors.borderLight, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textSecondary,
               }}>
                 <CloseOutlined style={{ fontSize: 14 }} />
               </button>
@@ -324,8 +326,8 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
               {prevBudgets.length > 0 && (
                 <button onClick={handleCopyFromLastMonth} style={{
                   width: '100%', padding: '10px 0', borderRadius: 12,
-                  border: '1.5px dashed #E4E4E7', background: 'transparent',
-                  fontSize: 13, fontWeight: 600, color: '#71717A', cursor: 'pointer',
+                  border: `1.5px dashed ${colors.border}`, background: 'transparent',
+                  fontSize: 13, fontWeight: 600, color: colors.textSecondary, cursor: 'pointer',
                   marginBottom: 16,
                 }}>
                   📋 复制上月预算
@@ -334,15 +336,15 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
 
               {/* Total budget */}
               <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#18181B', marginBottom: 8 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 8 }}>
                   月度总预算
                 </label>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
-                  background: '#FAFAFA', borderRadius: 14, padding: '12px 14px',
-                  border: '1px solid #F4F4F5',
+                  background: colors.bg, borderRadius: 14, padding: '12px 14px',
+                  border: `1px solid ${colors.borderLight}`,
                 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, color: '#A1A1AA' }}>¥</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: colors.textTertiary }}>¥</span>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -351,31 +353,31 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
                     placeholder="不限"
                     style={{
                       flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                      fontSize: 18, fontWeight: 600, color: '#18181B',
+                      fontSize: 18, fontWeight: 600, color: colors.text,
                     }}
                   />
                 </div>
               </div>
 
               {/* Category budgets */}
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#18181B', marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 12 }}>
                 分类预算
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {categories.map(cat => (
                   <div key={cat.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10,
-                    background: '#FAFAFA', borderRadius: 12, padding: '8px 12px',
-                    border: '1px solid #F4F4F5',
+                    background: colors.bg, borderRadius: 12, padding: '8px 12px',
+                    border: `1px solid ${colors.borderLight}`,
                   }}>
                     <span style={{ fontSize: 18 }}>{cat.emoji}</span>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: '#18181B', width: 48 }}>{cat.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: colors.text, width: 48 }}>{cat.name}</span>
                     <div style={{
                       flex: 1, display: 'flex', alignItems: 'center', gap: 4,
-                      background: '#fff', borderRadius: 10, padding: '6px 10px',
-                      border: '1px solid #F4F4F5',
+                      background: colors.bgElevated, borderRadius: 10, padding: '6px 10px',
+                      border: `1px solid ${colors.borderLight}`,
                     }}>
-                      <span style={{ fontSize: 13, color: '#A1A1AA' }}>¥</span>
+                      <span style={{ fontSize: 13, color: colors.textTertiary }}>¥</span>
                       <input
                         type="number"
                         inputMode="decimal"
@@ -384,7 +386,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
                         placeholder="不限"
                         style={{
                           flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                          fontSize: 14, fontWeight: 500, color: '#18181B', width: 0,
+                          fontSize: 14, fontWeight: 500, color: colors.text, width: 0,
                         }}
                       />
                     </div>
@@ -397,7 +399,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
             <div style={{ flexShrink: 0, padding: '12px 20px', paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
               <button onClick={handleSave} style={{
                 width: '100%', height: 48, borderRadius: 14, border: 'none',
-                background: '#18181B', color: '#fff', fontSize: 16, fontWeight: 700,
+                background: isDark ? '#242424' : '#18181B', color: '#fff', fontSize: 16, fontWeight: 700,
                 cursor: 'pointer', boxShadow: '0 4px 12px rgba(24,24,27,0.2)',
               }}>
                 保存

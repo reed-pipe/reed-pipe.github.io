@@ -6,6 +6,7 @@ import { useDb } from '@/shared/db/context'
 import type { AccTransaction } from '@/shared/db'
 import { groupTransactionsByDate, formatDateLabel, getWeekDay, getMonthRange } from '../utils'
 import QuickEntry from './QuickEntry'
+import { useTheme } from '@/shared/hooks/useTheme'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export default function TransactionList({ ledgerId, yearMonth, filterDate, onClearFilter, onAdd }: Props) {
+  const { colors, isDark } = useTheme()
   const db = useDb()
   const screens = useBreakpoint()
   const isMobile = !screens.md
@@ -72,20 +74,20 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
       )}
 
       <Input
-        prefix={<SearchOutlined style={{ color: '#A1A1AA' }} />}
+        prefix={<SearchOutlined style={{ color: colors.textTertiary }} />}
         placeholder="搜索备注、分类..."
         value={search} onChange={e => setSearch(e.target.value)}
         allowClear size="small" variant="filled"
-        style={{ borderRadius: 20, marginBottom: 12, background: '#F4F4F5', fontSize: 13 }}
+        style={{ borderRadius: 20, marginBottom: 12, background: colors.borderLight, fontSize: 13 }}
       />
 
       {groups.length === 0 ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', padding: '48px 0', color: '#A1A1AA',
+          justifyContent: 'center', padding: '48px 0', color: colors.textTertiary,
         }}>
           <div style={{
-            width: 56, height: 56, borderRadius: '50%', background: '#F4F4F5',
+            width: 56, height: 56, borderRadius: '50%', background: colors.borderLight,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 12, fontSize: 24,
           }}>
@@ -98,7 +100,7 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
             <button
               onClick={onAdd}
               style={{
-                marginTop: 16, background: '#18181B', color: '#fff',
+                marginTop: 16, background: isDark ? '#242424' : '#18181B', color: '#fff',
                 borderRadius: 12, padding: '10px 24px', fontSize: 13,
                 fontWeight: 600, border: 'none', cursor: 'pointer',
                 transition: 'opacity 0.15s',
@@ -118,10 +120,10 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
               display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
               marginBottom: 8, padding: '0 2px',
             }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#18181B' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: colors.text }}>
                 {formatDateLabel(group.date)}
               </span>
-              <div style={{ display: 'flex', gap: 10, fontSize: 11, fontWeight: 500, color: '#A1A1AA' }}>
+              <div style={{ display: 'flex', gap: 10, fontSize: 11, fontWeight: 500, color: colors.textTertiary }}>
                 {group.totalIncome > 0 && <span>收 {group.totalIncome.toFixed(2)}</span>}
                 {group.totalExpense > 0 && <span>支 {group.totalExpense.toFixed(2)}</span>}
               </div>
@@ -129,8 +131,8 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
 
             {/* Transactions card */}
             <div style={{
-              background: '#fff', borderRadius: 16,
-              border: '1px solid rgba(244,244,245,0.8)',
+              background: colors.bgElevated, borderRadius: 16,
+              border: `1px solid ${colors.borderLight}`,
               boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               overflow: 'hidden',
             }}>
@@ -146,9 +148,9 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
                       display: 'flex', alignItems: 'center',
                       padding: isMobile ? '12px 14px' : '14px 16px',
                       cursor: 'pointer', transition: 'background 0.15s',
-                      borderBottom: isLast ? 'none' : '1px solid #FAFAFA',
+                      borderBottom: isLast ? 'none' : `1px solid ${colors.bg}`,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#FAFAFA' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = colors.bg }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                   >
                     {/* Icon */}
@@ -156,7 +158,7 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
                       width: 40, height: 40, borderRadius: 12,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       marginRight: 12, flexShrink: 0, fontSize: 20,
-                      background: t.type === 'expense' ? '#F4F4F5' : '#ECFDF5',
+                      background: t.type === 'expense' ? colors.borderLight : colors.successBg,
                     }}>
                       {cat?.emoji ?? '💰'}
                     </div>
@@ -167,18 +169,18 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         marginBottom: t.note ? 2 : 0,
                       }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#18181B' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>
                           {cat?.name ?? '未知'}
                         </span>
                         <span style={{
                           fontSize: 15, fontWeight: 600,
-                          color: t.type === 'income' ? '#10B981' : '#18181B',
+                          color: t.type === 'income' ? '#10B981' : colors.text,
                         }}>
                           {t.type === 'expense' ? '-' : '+'}{t.amount.toFixed(2)}
                         </span>
                       </div>
                       {t.note && (
-                        <Text style={{ fontSize: 11, color: '#A1A1AA', display: 'block' }} ellipsis>
+                        <Text style={{ fontSize: 11, color: colors.textTertiary, display: 'block' }} ellipsis>
                           {t.note}
                         </Text>
                       )}

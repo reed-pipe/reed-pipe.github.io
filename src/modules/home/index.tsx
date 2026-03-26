@@ -1,14 +1,16 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Typography, Progress, InputNumber, Button, Grid, message } from 'antd'
 import { HeartOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, FireOutlined, CheckCircleOutlined, EnvironmentOutlined, AccountBookOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { Reorder } from 'framer-motion'
 import dayjs from 'dayjs'
 import { useDb } from '@/shared/db/context'
 import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { Trip, TripSpot } from '@/shared/db'
 import TravelYearMap from '@/modules/travel/components/TravelYearMap'
-import { colors, gradients, shadows } from '@/shared/theme'
+import { useTheme } from '@/shared/hooks/useTheme'
+import { CardSkeleton } from '@/shared/components/Skeleton'
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
@@ -25,7 +27,7 @@ function MiniSparkline({ values, color, width = 140, height = 40 }: { values: nu
   // Fill area
   const areaPoints = points + ` ${pad + (width - pad * 2)},${height} ${pad},${height}`
   return (
-    <svg width={width} height={height} style={{ display: 'block' }}>
+    <svg width={width} height={height} style={{ display: 'block' }} role="img" aria-label={`过去${values.length}天趋势`}>
       <defs>
         <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.15" />
@@ -50,12 +52,13 @@ function SectionCard({ children, onClick, style }: {
   onClick?: () => void
   style?: React.CSSProperties
 }) {
+  const { colors, shadows } = useTheme()
   return (
     <div
       className="card-hover"
       onClick={onClick}
       style={{
-        background: '#fff',
+        background: colors.bgElevated,
         borderRadius: 18,
         padding: 20,
         border: `1px solid ${colors.borderLight}`,
@@ -70,6 +73,7 @@ function SectionCard({ children, onClick, style }: {
 }
 
 export default function Home() {
+  const { colors, gradients, shadows } = useTheme()
   const db = useDb()
   const navigate = useNavigate()
   const notifyChanged = useDataChanged()
@@ -79,9 +83,12 @@ export default function Home() {
   const [quickWeight, setQuickWeight] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const records = useLiveQuery(() => db.weightRecords.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db]) ?? []
-  const trips = useLiveQuery(() => db.trips.orderBy('startDate').filter(r => !r.deletedAt).reverse().toArray(), [db]) ?? []
+  const recordsRaw = useLiveQuery(() => db.weightRecords.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db])
+  const records = recordsRaw ?? []
+  const tripsRaw = useLiveQuery(() => db.trips.orderBy('startDate').filter(r => !r.deletedAt).reverse().toArray(), [db])
+  const trips = tripsRaw ?? []
   const allSpots = useLiveQuery(() => db.tripSpots.filter(r => !r.deletedAt).toArray(), [db]) ?? []
+  const loading = recordsRaw === undefined || tripsRaw === undefined
 
   const heightVal = useLiveQuery(async () => {
     const item = await db.kv.get('body_height')
@@ -119,6 +126,53 @@ export default function Home() {
     return count
   }, [records, today])
 
+  // Smart reminders
+  const reminders = useMemo(() => {
+    const items: { text: string; type: 'info' | 'warning' | 'success' }[] = []
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    // 1. Weight streak
+    if (streak > 0) {
+      items.push({ text: `已连续记录体重 ${streak} 天`, type: 'success' })
+    }
+
+    // 2. No weight record today
+    const todayRecord = records.find(r => r.date === todayStr)
+    if (!todayRecord && records.length > 0) {
+      items.push({ text: '今天还没记录体重哦', type: 'info' })
+    }
+
+    // 3. Upcoming trip (within 7 days)
+    const upcomingTrip = trips.find(t => t.startDate > todayStr)
+    if (upcomingTrip) {
+      const daysUntil = Math.ceil((new Date(upcomingTrip.startDate).getTime() - Date.now()) / 86400000)
+      if (daysUntil <= 7) {
+        items.push({ text: `距离「${upcomingTrip.title}」还有 ${daysUntil} 天`, type: 'info' })
+      }
+    }
+
+    // 4. Ongoing trip
+    const ongoingTrip = trips.find(t => t.startDate <= todayStr && t.endDate >= todayStr)
+    if (ongoingTrip) {
+      const dayNum = Math.ceil((Date.now() - new Date(ongoingTrip.startDate).getTime()) / 86400000) + 1
+      items.push({ text: `「${ongoingTrip.title}」进行中 · 第 ${dayNum} 天`, type: 'success' })
+    }
+
+    return items
+  }, [records, trips, streak])
+
+  // Dashboard card order (persisted in kv)
+  const DEFAULT_ORDER = ['weight', 'accounting', 'travel']
+  const savedOrder = useLiveQuery(async () => {
+    const item = await db.kv.get('dashboard_order')
+    return (item?.value as string[] | undefined) ?? null
+  }, [db])
+  const cardOrder = savedOrder ?? DEFAULT_ORDER
+
+  const handleReorder = useCallback((newOrder: string[]) => {
+    db.kv.put({ key: 'dashboard_order', value: newOrder })
+  }, [db])
+
   const progress = useMemo(() => {
     if (goalWeight == null || latest == null || sorted.length < 2) return null
     const first = sorted[0]!.weight
@@ -148,144 +202,214 @@ export default function Home() {
     message.success('记录成功')
   }
 
+  if (loading) return <CardSkeleton count={4} />
+
+  const cardComponents: Record<string, React.ReactNode> = {
+    weight: (
+      <WeightCard
+        colors={colors}
+        gradients={gradients}
+        shadows={shadows}
+        isMobile={isMobile}
+        navigate={navigate}
+        streak={streak}
+        latest={latest}
+        trend={trend}
+        sparkValues={sparkValues}
+        progress={progress}
+        hasRecordToday={hasRecordToday}
+        quickWeight={quickWeight}
+        setQuickWeight={setQuickWeight}
+        handleQuickSubmit={handleQuickSubmit}
+        submitting={submitting}
+      />
+    ),
+    accounting: (
+      <AccountingSummaryCard onNavigate={() => navigate('/accounting')} isMobile={isMobile} />
+    ),
+    travel: (
+      <TravelSummaryCard trips={trips} spots={allSpots} onNavigate={() => navigate('/travel')} isMobile={isMobile} />
+    ),
+  }
+
   return (
     <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Today reminder */}
-      {!hasRecordToday && records.length > 0 && (
+      {/* Smart reminders */}
+      {reminders.length > 0 && (
         <div style={{
-          padding: '10px 16px',
+          padding: '12px 16px',
           borderRadius: 12,
-          background: colors.warningBg,
-          border: `1px solid rgba(217, 119, 6, 0.12)`,
-          fontSize: 13,
-          color: colors.warning,
-          fontWeight: 500,
+          background: colors.primaryBg,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
         }}>
-          今天还没有记录体重，记得称重~
+          {reminders.map((r, i) => (
+            <div key={i} style={{ fontSize: 13, color: colors.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>{r.type === 'success' ? '🔥' : r.type === 'warning' ? '⚠️' : '💡'}</span>
+              <span>{r.text}</span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Body management */}
-      <SectionCard onClick={() => navigate('/body-management')}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 10,
-              background: 'linear-gradient(135deg, #FEE2E2, #FECACA)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <HeartOutlined style={{ color: colors.danger, fontSize: 15 }} />
-            </div>
-            <Text strong style={{ fontSize: 15 }}>身材管理</Text>
+      {/* Reorderable cards */}
+      <Reorder.Group
+        axis="y"
+        values={cardOrder}
+        onReorder={handleReorder}
+        as="div"
+        style={{ display: 'flex', flexDirection: 'column', gap: 16, listStyle: 'none', padding: 0, margin: 0 }}
+      >
+        {cardOrder.map(key => (
+          <Reorder.Item
+            key={key}
+            value={key}
+            as="div"
+            style={{ listStyle: 'none' }}
+            whileDrag={{ scale: 1.02, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', borderRadius: 18, zIndex: 10 }}
+          >
+            {cardComponents[key]}
+          </Reorder.Item>
+        ))}
+      </Reorder.Group>
+    </div>
+  )
+}
+
+/** Weight / body management card — extracted for reorder support */
+function WeightCard({ colors, gradients, shadows, isMobile, navigate, streak, latest, trend, sparkValues, progress, hasRecordToday, quickWeight, setQuickWeight, handleQuickSubmit, submitting }: {
+  colors: ReturnType<typeof useTheme>['colors']
+  gradients: ReturnType<typeof useTheme>['gradients']
+  shadows: ReturnType<typeof useTheme>['shadows']
+  isMobile: boolean
+  navigate: ReturnType<typeof useNavigate>
+  streak: number
+  latest: { weight: number; bmi?: number } | null
+  trend: number | null
+  sparkValues: number[]
+  progress: number | null
+  hasRecordToday: boolean
+  quickWeight: number | null
+  setQuickWeight: (v: number | null) => void
+  handleQuickSubmit: () => void
+  submitting: boolean
+}) {
+  return (
+    <SectionCard onClick={() => navigate('/body-management')}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 10,
+            background: 'linear-gradient(135deg, #FEE2E2, #FECACA)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <HeartOutlined style={{ color: colors.danger, fontSize: 15 }} />
           </div>
-          {streak > 0 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '3px 10px', borderRadius: 10,
-              background: colors.warningBg,
-              fontSize: 12, fontWeight: 600, color: colors.warning,
-            }}>
-              <FireOutlined /> {streak} 天
+          <Text strong style={{ fontSize: 15 }}>身材管理</Text>
+        </div>
+        {streak > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 10px', borderRadius: 10,
+            background: colors.warningBg,
+            fontSize: 12, fontWeight: 600, color: colors.warning,
+          }}>
+            <FireOutlined /> {streak} 天
+          </div>
+        )}
+      </div>
+
+      {latest ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 14 : 24, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: colors.primary, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+              {latest.weight}
+              <span style={{ fontSize: 14, fontWeight: 500, marginLeft: 2, color: colors.textSecondary }}>kg</span>
+            </div>
+            {trend !== null && trend !== 0 && (
+              <div style={{ fontSize: 13, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {trend < 0 ? (
+                  <span style={{ color: colors.success, fontWeight: 600 }}><ArrowDownOutlined /> {Math.abs(trend)}kg</span>
+                ) : (
+                  <span style={{ color: colors.danger, fontWeight: 600 }}><ArrowUpOutlined /> +{trend}kg</span>
+                )}
+                <span style={{ color: colors.textTertiary }}>vs 上次</span>
+              </div>
+            )}
+            {latest.bmi != null && (
+              <Text type="secondary" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>BMI {latest.bmi}</Text>
+            )}
+          </div>
+
+          <MiniSparkline values={sparkValues} color={colors.primary} width={isMobile ? 120 : 160} height={48} />
+
+          {progress !== null && (
+            <div style={{ minWidth: 90 }}>
+              <Text type="secondary" style={{ fontSize: 11, marginBottom: 4, display: 'block' }}>目标进度</Text>
+              <Progress
+                percent={progress}
+                size="small"
+                strokeColor={progress >= 100 ? colors.success : colors.primary}
+                format={(p) => `${p}%`}
+              />
             </div>
           )}
         </div>
+      ) : (
+        <Text type="secondary">暂无数据，点击前往记录</Text>
+      )}
 
-        {latest ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 14 : 24, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: colors.primary, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-                {latest.weight}
-                <span style={{ fontSize: 14, fontWeight: 500, marginLeft: 2, color: colors.textSecondary }}>kg</span>
-              </div>
-              {trend !== null && trend !== 0 && (
-                <div style={{ fontSize: 13, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {trend < 0 ? (
-                    <span style={{ color: colors.success, fontWeight: 600 }}><ArrowDownOutlined /> {Math.abs(trend)}kg</span>
-                  ) : (
-                    <span style={{ color: colors.danger, fontWeight: 600 }}><ArrowUpOutlined /> +{trend}kg</span>
-                  )}
-                  <span style={{ color: colors.textTertiary }}>vs 上次</span>
-                </div>
-              )}
-              {latest.bmi != null && (
-                <Text type="secondary" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>BMI {latest.bmi}</Text>
-              )}
-            </div>
-
-            <MiniSparkline values={sparkValues} color={colors.primary} width={isMobile ? 120 : 160} height={48} />
-
-            {progress !== null && (
-              <div style={{ minWidth: 90 }}>
-                <Text type="secondary" style={{ fontSize: 11, marginBottom: 4, display: 'block' }}>目标进度</Text>
-                <Progress
-                  percent={progress}
-                  size="small"
-                  strokeColor={progress >= 100 ? colors.success : colors.primary}
-                  format={(p) => `${p}%`}
-                />
-              </div>
-            )}
-          </div>
-        ) : (
-          <Text type="secondary">暂无数据，点击前往记录</Text>
-        )}
-
-        {hasRecordToday && (
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <CheckCircleOutlined style={{ color: colors.success, fontSize: 12 }} />
-            <Text type="secondary" style={{ fontSize: 12 }}>今日已记录</Text>
-          </div>
-        )}
-
-        {/* Inline quick input */}
-        <div style={{
-          marginTop: 14, paddingTop: 14,
-          borderTop: `1px solid ${colors.borderLight}`,
-          display: 'flex', gap: 8, alignItems: 'center',
-        }}
-          onClick={e => e.stopPropagation()}
-        >
-          <InputNumber
-            value={quickWeight}
-            onChange={(v) => setQuickWeight(v)}
-            min={20} max={300} step={0.1} precision={1}
-            placeholder="体重 kg"
-            style={{ flex: 1 }}
-            onPressEnter={handleQuickSubmit}
-          />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleQuickSubmit}
-            loading={submitting}
-            style={{
-              background: gradients.primary,
-              border: 'none',
-              borderRadius: 10,
-              fontWeight: 600,
-              boxShadow: shadows.primary,
-            }}
-          >
-            记录
-          </Button>
+      {hasRecordToday && (
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <CheckCircleOutlined style={{ color: colors.success, fontSize: 12 }} />
+          <Text type="secondary" style={{ fontSize: 12 }}>今日已记录</Text>
         </div>
-        <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-          自动记录为今天{new Date().getHours() < 14 ? '早晨' : '晚上'}
-        </Text>
-      </SectionCard>
+      )}
 
-      {/* Accounting summary */}
-      <AccountingSummaryCard onNavigate={() => navigate('/accounting')} isMobile={isMobile} />
-
-      {/* Travel summary */}
-      <TravelSummaryCard trips={trips} spots={allSpots} onNavigate={() => navigate('/travel')} isMobile={isMobile} />
-    </div>
+      {/* Inline quick input */}
+      <div style={{
+        marginTop: 14, paddingTop: 14,
+        borderTop: `1px solid ${colors.borderLight}`,
+        display: 'flex', gap: 8, alignItems: 'center',
+      }}
+        onClick={e => e.stopPropagation()}
+      >
+        <InputNumber
+          value={quickWeight}
+          onChange={(v) => setQuickWeight(v)}
+          min={20} max={300} step={0.1} precision={1}
+          placeholder="体重 kg"
+          style={{ flex: 1 }}
+          onPressEnter={handleQuickSubmit}
+        />
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleQuickSubmit}
+          loading={submitting}
+          style={{
+            background: gradients.primary,
+            border: 'none',
+            borderRadius: 10,
+            fontWeight: 600,
+            boxShadow: shadows.primary,
+          }}
+        >
+          记录
+        </Button>
+      </div>
+      <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
+        自动记录为今天{new Date().getHours() < 14 ? '早晨' : '晚上'}
+      </Text>
+    </SectionCard>
   )
 }
 
 function TravelSummaryCard({ trips, spots, onNavigate, isMobile }: {
   trips: Trip[]; spots: TripSpot[]; onNavigate: () => void; isMobile: boolean
 }) {
+  const { colors, gradients } = useTheme()
   const totalTrips = trips.length
   const destinations = new Set(trips.map(t => t.destination)).size
   const photoCount = spots.reduce((n, s) => n + s.photos.length, 0)
@@ -414,6 +538,7 @@ function TravelSummaryCard({ trips, spots, onNavigate, isMobile }: {
 }
 
 function AccountingSummaryCard({ onNavigate, isMobile }: { onNavigate: () => void; isMobile: boolean }) {
+  const { colors } = useTheme()
   const db = useDb()
   const today = dayjs()
   const yearMonth = today.format('YYYY-MM')
@@ -468,15 +593,15 @@ function AccountingSummaryCard({ onNavigate, isMobile }: { onNavigate: () => voi
     // Single category: render full circle instead of arc
     if (topCats.length === 1) {
       return (
-        <svg width={size} height={size} style={{ display: 'block', flexShrink: 0 }}>
+        <svg width={size} height={size} style={{ display: 'block', flexShrink: 0 }} role="img" aria-label="分类占比图">
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={topCats[0]!.color} strokeWidth={sw} />
         </svg>
       )
     }
     let startAngle = -90
     return (
-      <svg width={size} height={size} style={{ display: 'block', flexShrink: 0 }}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F3F4F6" strokeWidth={sw} />
+      <svg width={size} height={size} style={{ display: 'block', flexShrink: 0 }} role="img" aria-label="分类占比图">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={colors.borderLight} strokeWidth={sw} />
         {topCats.map((d, i) => {
           const angle = Math.max((d.amount / total) * 360 - 1.5, 0.5)
           const s = (startAngle * Math.PI) / 180

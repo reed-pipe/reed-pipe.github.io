@@ -198,6 +198,8 @@ export default function WeightChart({ records, periodFilter, dataType }: Props) 
         width={chartWidth}
         height={SVG_HEIGHT}
         style={{ display: 'block', touchAction: needsScroll ? 'pan-x' : 'none' }}
+        role="img"
+        aria-label={`${meta.unit ? dataType === 'weight' ? '体重' : dataType === 'bodyFat' ? '体脂' : 'BMI' : 'BMI'}趋势图，共${sorted.length}条记录，最新值${lastVal}${meta.unit}`}
         onTouchMove={(e) => { const t = e.touches[0]; if (t) handleInteraction(t.clientX) }}
         onTouchEnd={() => setTimeout(() => setActiveIdx(null), 1500)}
         onMouseMove={(e) => handleInteraction(e.clientX)}

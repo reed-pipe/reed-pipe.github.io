@@ -125,7 +125,10 @@ export default function Accounting() {
       </div>
 
       {/* Dark hero card */}
-      <div style={{
+      <div
+        role="region"
+        aria-label="月度账单摘要"
+        style={{
         background: isDark ? '#242424' : '#18181B', borderRadius: 20, padding: isMobile ? '20px 20px 16px' : '24px 24px 20px',
         color: '#fff', marginBottom: isMobile ? 10 : 14, position: 'relative', overflow: 'hidden',
       }}>

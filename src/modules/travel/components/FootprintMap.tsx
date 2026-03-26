@@ -1,5 +1,5 @@
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react'
-import { MapContainer, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { Button, Spin } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined, PauseOutlined, CloseOutlined, LoadingOutlined } from '@ant-design/icons'
@@ -147,6 +147,19 @@ function BoundsFitter({ coords }: { coords: [number, number][] }) {
     else if (coords.length === 1) map.setView(coords[0]!, 12)
     setTimeout(() => map.invalidateSize(), 100)
   }, [map, coords])
+  return null
+}
+
+// --------------- Map Bounds Tracker ---------------
+
+function MapBoundsTracker({ onBoundsChange }: { onBoundsChange: (bounds: L.LatLngBounds) => void }) {
+  const map = useMapEvents({
+    moveend: () => onBoundsChange(map.getBounds()),
+    zoomend: () => onBoundsChange(map.getBounds()),
+  })
+  useEffect(() => {
+    onBoundsChange(map.getBounds())
+  }, [map]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
@@ -559,6 +572,7 @@ function SpotCard({ marker, onClose, onClick }: {
 export default function FootprintMap({ trips, spots, height = 480, spotCount, highlightTripId, onTripClick }: Props) {
   const [animState, setAnimState] = useState<AnimState>('idle')
   const [selectedMarker, setSelectedMarker] = useState<MarkerData | null>(null)
+  const [mapBounds, setMapBounds] = useState<L.LatLngBounds | null>(null)
 
   useEffect(() => {
     if (highlightTripId != null) { setAnimState('idle'); setSelectedMarker(null) }
@@ -614,6 +628,13 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
       return { ...m, lat, lng }
     }),
     [markers],
+  )
+
+  const visibleMarkers = useMemo(
+    () => mapBounds
+      ? displayMarkers.filter(m => mapBounds.contains([m.lat, m.lng]))
+      : displayMarkers,
+    [displayMarkers, mapBounds],
   )
 
   const displayCoords = useMemo<[number, number][]>(
@@ -676,12 +697,13 @@ export default function FootprintMap({ trips, spots, height = 480, spotCount, hi
       <MapContainer center={center} zoom={4} style={{ height: '100%', width: '100%' }} zoomControl={false}>
         <ZoomControl />
         <MapTiles />
+        <MapBoundsTracker onBoundsChange={setMapBounds} />
         {fitCoords.length > 0 && <BoundsFitter coords={fitCoords} />}
 
         {/* Static pin markers */}
         {showStatic && (
           <StaticMarkers
-            markers={displayMarkers}
+            markers={visibleMarkers}
             highlightTripId={highlightTripId}
             tripMap={tripMap}
             onMarkerClick={handleMarkerClick}

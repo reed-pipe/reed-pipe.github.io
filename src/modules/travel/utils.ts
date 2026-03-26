@@ -187,34 +187,6 @@ export function pickImage(multiple = false): Promise<File[]> {
   })
 }
 
-/** 压缩图片到指定最大宽度和质量 */
-export function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let w = img.width
-        let h = img.height
-        if (w > maxWidth) {
-          h = (h * maxWidth) / w
-          w = maxWidth
-        }
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')!
-        ctx.drawImage(img, 0, 0, w, h)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
 /** 导出旅行数据为 CSV */
 export function exportTravelCSV(trips: Trip[], spots: TripSpot[]): string {
   const header = '旅行,目的地,开始日期,结束日期,天数,标签,评分,总花费,感想'

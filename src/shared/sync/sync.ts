@@ -1,8 +1,8 @@
 import { encrypt, decrypt } from '../auth/crypto'
 import { getGistIfModified, updateGistFiles } from './gist'
-import { type AppDb } from '../db'
+import { type AppDb, SYNCED_TABLES } from '../db'
 
-const CURRENT_SYNC_VERSION = 2
+const CURRENT_SYNC_VERSION = 3
 
 interface SyncPayload {
   syncVersion: number
@@ -11,6 +11,7 @@ interface SyncPayload {
 }
 
 interface PlainData {
+  syncVersion: number
   lastModified: number
   tables: {
     kv: Array<{ key: string; value: unknown }>
@@ -22,6 +23,7 @@ interface PlainData {
     accCategories?: Array<Record<string, unknown>>
     accTransactions?: Array<Record<string, unknown>>
     accBudgets?: Array<Record<string, unknown>>
+    accRecurring?: Array<Record<string, unknown>>
   }
 }
 
@@ -101,6 +103,123 @@ function mergeBlobs(
   }
 }
 
+/** Prevent concurrent pushes */
+let syncLock = false
+
+/** Deep equality check for two plain values */
+function recordsEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Merge a single synced table (non-kv).
+ * Compares remote records against local and applies merge rules.
+ */
+async function mergeTable(
+  db: AppDb,
+  tableName: string,
+  remoteRecords: Record<string, unknown>[],
+): Promise<void> {
+  const table = db.table(tableName)
+  const primaryKey = 'id'
+
+  // Build lookup maps
+  const remoteMap = new Map<unknown, Record<string, unknown>>()
+  for (const r of remoteRecords) {
+    remoteMap.set(r[primaryKey], r)
+  }
+
+  const localRecords = await table.toArray() as Record<string, unknown>[]
+  const localMap = new Map<unknown, Record<string, unknown>>()
+  for (const l of localRecords) {
+    localMap.set(l[primaryKey], l)
+  }
+
+  // Process remote records
+  for (const [rKey, remote] of remoteMap) {
+    const local = localMap.get(rKey)
+
+    if (!local) {
+      // Remote has, local doesn't → add to local
+      await table.add(remote as never)
+      continue
+    }
+
+    // Both exist — check deletedAt
+    if (remote.deletedAt != null) {
+      // Remote marked deleted → mark local deleted too
+      if (local.deletedAt == null || (local.deletedAt as number) !== (remote.deletedAt as number)) {
+        await table.put({ ...local, deletedAt: remote.deletedAt, updatedAt: remote.updatedAt } as never)
+      }
+      continue
+    }
+
+    // Both exist, not deleted — compare updatedAt
+    const remoteUpdated = (remote.updatedAt as number) ?? 0
+    const localUpdated = (local.updatedAt as number) ?? 0
+
+    if (remoteUpdated > localUpdated) {
+      // Remote is newer → overwrite local
+      await table.put(remote as never)
+    } else if (remoteUpdated === localUpdated && !recordsEqual(remote, local)) {
+      // Same timestamp but different content → conflict
+      await db.syncConflicts.add({
+        table: tableName,
+        recordId: rKey as string | number,
+        localData: local,
+        remoteData: remote,
+        status: 'pending',
+        createdAt: Date.now(),
+      } as never)
+    }
+    // localUpdated > remoteUpdated → keep local (will be pushed next)
+  }
+
+  // Local-only records (local has, remote doesn't) → keep local, will be pushed
+  // No action needed
+}
+
+/**
+ * Merge kv table using last-push-wins: remote always overwrites local.
+ */
+async function mergeKvTable(
+  db: AppDb,
+  remoteRecords: Array<{ key: string; value: unknown }>,
+): Promise<void> {
+  const remoteMap = new Map<string, { key: string; value: unknown }>()
+  for (const r of remoteRecords) {
+    remoteMap.set(r.key, r)
+  }
+
+  const localRecords = await db.kv.toArray()
+  const localMap = new Map<string, { key: string; value: unknown }>()
+  for (const l of localRecords) {
+    localMap.set(l.key, l)
+  }
+
+  // Remote records: add or overwrite
+  for (const [rKey, remote] of remoteMap) {
+    const local = localMap.get(rKey)
+    if (!local || !recordsEqual(local.value, remote.value)) {
+      await db.kv.put(remote)
+    }
+  }
+
+  // Local-only kv entries → keep local (will be pushed next)
+}
+
+/** Clean up soft-deleted records older than 30 days */
+async function cleanupSoftDeletes(db: AppDb): Promise<void> {
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  for (const tableName of SYNCED_TABLES) {
+    const table = db.table(tableName)
+    await table
+      .where('deletedAt')
+      .belowOrEqual(cutoff)
+      .delete()
+  }
+}
+
 
 export async function pushData(
   db: AppDb,
@@ -108,69 +227,84 @@ export async function pushData(
   dataGistId: string,
   username: string,
 ): Promise<void> {
-  const [kvItems, weightRecords, bodyMeasurements, trips, tripSpots, ledgers, accCategories, accTransactions, accBudgets] = await Promise.all([
-    db.kv.toArray(),
-    db.weightRecords.toArray(),
-    db.bodyMeasurements.toArray(),
-    db.trips.toArray(),
-    db.tripSpots.toArray(),
-    db.ledgers.toArray(),
-    db.accCategories.toArray(),
-    db.accTransactions.toArray(),
-    db.accBudgets.toArray(),
-  ])
+  if (syncLock) return
+  syncLock = true
+  try {
+    // Pull-merge before push to avoid overwriting remote changes
+    await pullData(db, key, dataGistId)
 
-  const { cleanTrips, cleanSpots, blob } = splitBlobs(
-    trips as unknown as Array<Record<string, unknown>>,
-    tripSpots as unknown as Array<Record<string, unknown>>,
-  )
+    const [kvItems, weightRecords, bodyMeasurements, trips, tripSpots, ledgers, accCategories, accTransactions, accBudgets, accRecurring] = await Promise.all([
+      db.kv.toArray(),
+      db.weightRecords.toArray(),
+      db.bodyMeasurements.toArray(),
+      db.trips.toArray(),
+      db.tripSpots.toArray(),
+      db.ledgers.toArray(),
+      db.accCategories.toArray(),
+      db.accTransactions.toArray(),
+      db.accBudgets.toArray(),
+      db.accRecurring.toArray(),
+    ])
 
-  const plain: PlainData = {
-    lastModified: Date.now(),
-    tables: {
-      kv: kvItems.map((item) => ({ key: item.key, value: item.value })),
-      weightRecords: weightRecords as unknown as Array<Record<string, unknown>>,
-      bodyMeasurements: bodyMeasurements as unknown as Array<Record<string, unknown>>,
-      trips: cleanTrips,
-      tripSpots: cleanSpots,
-      ledgers: ledgers as unknown as Array<Record<string, unknown>>,
-      accCategories: accCategories as unknown as Array<Record<string, unknown>>,
-      accTransactions: accTransactions as unknown as Array<Record<string, unknown>>,
-      accBudgets: accBudgets as unknown as Array<Record<string, unknown>>,
-    },
+    const { cleanTrips, cleanSpots, blob } = splitBlobs(
+      trips as unknown as Array<Record<string, unknown>>,
+      tripSpots as unknown as Array<Record<string, unknown>>,
+    )
+
+    const plain: PlainData = {
+      syncVersion: CURRENT_SYNC_VERSION,
+      lastModified: Date.now(),
+      tables: {
+        kv: kvItems.map((item) => ({ key: item.key, value: item.value })),
+        weightRecords: weightRecords as unknown as Array<Record<string, unknown>>,
+        bodyMeasurements: bodyMeasurements as unknown as Array<Record<string, unknown>>,
+        trips: cleanTrips,
+        tripSpots: cleanSpots,
+        ledgers: ledgers as unknown as Array<Record<string, unknown>>,
+        accCategories: accCategories as unknown as Array<Record<string, unknown>>,
+        accTransactions: accTransactions as unknown as Array<Record<string, unknown>>,
+        accBudgets: accBudgets as unknown as Array<Record<string, unknown>>,
+        accRecurring: accRecurring as unknown as Array<Record<string, unknown>>,
+      },
+    }
+
+    const dataJson = JSON.stringify(plain)
+    const blobJson = JSON.stringify(blob)
+
+    const dataHash = simpleHash(dataJson)
+    const blobHash = simpleHash(blobJson)
+    const stored = getStoredHashes()
+
+    const filesToUpdate: Record<string, string> = {}
+
+    const dataFileName = `pa-data-${username}.json`
+    const blobFileName = `pa-blob-${username}.json`
+
+    if (dataHash !== stored.data) {
+      const { iv, ciphertext } = await encrypt(dataJson, key)
+      const payload: SyncPayload = { syncVersion: CURRENT_SYNC_VERSION, iv, data: ciphertext }
+      filesToUpdate[dataFileName] = JSON.stringify(payload)
+    }
+
+    if (blobHash !== stored.blob) {
+      const { iv, ciphertext } = await encrypt(blobJson, key)
+      const payload: SyncPayload = { syncVersion: CURRENT_SYNC_VERSION, iv, data: ciphertext }
+      filesToUpdate[blobFileName] = JSON.stringify(payload)
+    }
+
+    if (Object.keys(filesToUpdate).length === 0) {
+      // Nothing changed
+      return
+    }
+
+    await updateGistFiles(dataGistId, filesToUpdate)
+    storeHashes({ data: dataHash, blob: blobHash })
+
+    // Clean up soft-deleted records older than 30 days after successful push
+    await cleanupSoftDeletes(db)
+  } finally {
+    syncLock = false
   }
-
-  const dataJson = JSON.stringify(plain)
-  const blobJson = JSON.stringify(blob)
-
-  const dataHash = simpleHash(dataJson)
-  const blobHash = simpleHash(blobJson)
-  const stored = getStoredHashes()
-
-  const filesToUpdate: Record<string, string> = {}
-
-  const dataFileName = `pa-data-${username}.json`
-  const blobFileName = `pa-blob-${username}.json`
-
-  if (dataHash !== stored.data) {
-    const { iv, ciphertext } = await encrypt(dataJson, key)
-    const payload: SyncPayload = { syncVersion: CURRENT_SYNC_VERSION, iv, data: ciphertext }
-    filesToUpdate[dataFileName] = JSON.stringify(payload)
-  }
-
-  if (blobHash !== stored.blob) {
-    const { iv, ciphertext } = await encrypt(blobJson, key)
-    const payload: SyncPayload = { syncVersion: CURRENT_SYNC_VERSION, iv, data: ciphertext }
-    filesToUpdate[blobFileName] = JSON.stringify(payload)
-  }
-
-  if (Object.keys(filesToUpdate).length === 0) {
-    // Nothing changed
-    return
-  }
-
-  await updateGistFiles(dataGistId, filesToUpdate)
-  storeHashes({ data: dataHash, blob: blobHash })
 }
 
 export async function pullData(
@@ -209,50 +343,35 @@ export async function pullData(
   const tripsArr = (plain.tables.trips ?? []) as Array<Record<string, unknown>>
   const spotsArr = (plain.tables.tripSpots ?? []) as Array<Record<string, unknown>>
 
-  // Merge photos/covers back if v2 split format
+  // Merge photos/covers back if v2+ split format
   mergeBlobs(tripsArr, spotsArr, blob)
 
-  // For backward compat: old v1 data already has photos inline, mergeBlobs is a no-op
+  // --- Merge-based pull (not clear-and-replace) ---
 
-  await db.transaction('rw', [db.kv, db.weightRecords, db.bodyMeasurements, db.trips, db.tripSpots, db.ledgers, db.accCategories, db.accTransactions, db.accBudgets], async () => {
-    await db.kv.clear()
-    await db.weightRecords.clear()
-    await db.bodyMeasurements.clear()
-    await db.trips.clear()
-    await db.tripSpots.clear()
-    await db.ledgers.clear()
-    await db.accCategories.clear()
-    await db.accTransactions.clear()
-    await db.accBudgets.clear()
+  // 1. Merge kv table (last-push-wins)
+  if (plain.tables.kv?.length) {
+    await mergeKvTable(db, plain.tables.kv)
+  }
 
-    if (plain.tables.kv?.length) {
-      await db.kv.bulkPut(plain.tables.kv)
+  // 2. Merge each synced table
+  const tableDataMap: Record<string, Array<Record<string, unknown>>> = {
+    weightRecords: plain.tables.weightRecords ?? [],
+    bodyMeasurements: plain.tables.bodyMeasurements ?? [],
+    trips: tripsArr,
+    tripSpots: spotsArr,
+    ledgers: plain.tables.ledgers ?? [],
+    accCategories: plain.tables.accCategories ?? [],
+    accTransactions: plain.tables.accTransactions ?? [],
+    accBudgets: plain.tables.accBudgets ?? [],
+    accRecurring: plain.tables.accRecurring ?? [],
+  }
+
+  for (const tableName of SYNCED_TABLES) {
+    const remoteRecords = tableDataMap[tableName]
+    if (remoteRecords) {
+      await mergeTable(db, tableName, remoteRecords)
     }
-    if (plain.tables.weightRecords?.length) {
-      await db.weightRecords.bulkPut(plain.tables.weightRecords as never[])
-    }
-    if (plain.tables.bodyMeasurements?.length) {
-      await db.bodyMeasurements.bulkPut(plain.tables.bodyMeasurements as never[])
-    }
-    if (tripsArr.length) {
-      await db.trips.bulkPut(tripsArr as never[])
-    }
-    if (spotsArr.length) {
-      await db.tripSpots.bulkPut(spotsArr as never[])
-    }
-    if (plain.tables.ledgers?.length) {
-      await db.ledgers.bulkPut(plain.tables.ledgers as never[])
-    }
-    if (plain.tables.accCategories?.length) {
-      await db.accCategories.bulkPut(plain.tables.accCategories as never[])
-    }
-    if (plain.tables.accTransactions?.length) {
-      await db.accTransactions.bulkPut(plain.tables.accTransactions as never[])
-    }
-    if (plain.tables.accBudgets?.length) {
-      await db.accBudgets.bulkPut(plain.tables.accBudgets as never[])
-    }
-  })
+  }
 
   // Update local hashes so next push knows what's on cloud
   const dataHash = simpleHash(JSON.stringify(plain))

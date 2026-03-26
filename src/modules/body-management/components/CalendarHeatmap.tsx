@@ -97,7 +97,7 @@ export default function CalendarHeatmap({ records }: Props) {
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+      <svg width={svgW} height={svgH} style={{ display: 'block' }} role="img" aria-label={`体重记录热力图，共${records.length}条记录`}>
         {/* 周标签 */}
         {WEEK_LABELS.map((label, i) => (
           label && <text key={i} x={8} y={24 + i * (CELL + GAP) + CELL / 2} dominantBaseline="middle" textAnchor="end" fontSize={10} fill={colorTextSecondary}>{label}</text>

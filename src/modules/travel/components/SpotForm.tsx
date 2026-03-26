@@ -5,7 +5,8 @@ import type { UploadFile } from 'antd'
 import dayjs from 'dayjs'
 import type { TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { compressImage, TRANSPORT_OPTIONS, COST_CATEGORIES } from '../utils'
+import { TRANSPORT_OPTIONS, COST_CATEGORIES } from '../utils'
+import { compressFull } from '@/shared/utils/imageCompress'
 import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
@@ -80,7 +81,7 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
       return false
     }
     try {
-      const compressed = await compressImage(file, 800, 0.7)
+      const compressed = await compressFull(file)
       setPhotos((prev) => [...prev, compressed])
     } catch {
       message.error('图片处理失败')

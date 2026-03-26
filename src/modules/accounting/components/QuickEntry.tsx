@@ -481,7 +481,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   )
 }
 
-function KeyBtn({ children, onClick, color, colors, isDark }: {
+function KeyBtn({ children, onClick, color, colors }: {
   children: React.ReactNode; onClick: () => void; color?: string;
   colors?: { bgElevated: string; borderLight: string; text: string; bg: string };
   isDark?: boolean;

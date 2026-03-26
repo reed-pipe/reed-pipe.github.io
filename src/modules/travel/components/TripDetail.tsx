@@ -12,7 +12,8 @@ import {
 } from '@ant-design/icons'
 import type { Trip, TripSpot } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { formatDateRange, tripDays, formatCost, compressImage, getTripStatusLabel, T } from '../utils'
+import { formatDateRange, tripDays, formatCost, getTripStatusLabel, T } from '../utils'
+import { compressFull } from '@/shared/utils/imageCompress'
 import { reverseGeocode } from '../geocode'
 import { colors, gradients, shadows } from '@/shared/theme'
 import type React from 'react'
@@ -96,7 +97,7 @@ export default function TripDetail({ trip, spots, onBack, onEdit, onDeleted, onD
 
     message.loading({ content: '正在获取位置...', key: 'quickCheckin', duration: 0 })
     const [compressed, location] = await Promise.all([
-      compressImage(file, 800, 0.7),
+      compressFull(file),
       getGeoLocation(),
     ])
     message.destroy('quickCheckin')

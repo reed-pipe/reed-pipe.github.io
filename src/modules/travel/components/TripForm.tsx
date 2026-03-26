@@ -5,7 +5,7 @@ import type { UploadFile } from 'antd'
 import dayjs from 'dayjs'
 import type { Trip } from '@/shared/db'
 import { useDb } from '@/shared/db/context'
-import { compressImage } from '../utils'
+import { compressFull } from '@/shared/utils/imageCompress'
 import LocationPicker, { type LocationValue } from './LocationPicker'
 
 const { TextArea } = Input
@@ -70,7 +70,7 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
 
   const handleCoverUpload = async (file: File) => {
     try {
-      const compressed = await compressImage(file, 800, 0.7)
+      const compressed = await compressFull(file)
       setCoverPhoto(compressed)
     } catch {
       message.error('图片处理失败')

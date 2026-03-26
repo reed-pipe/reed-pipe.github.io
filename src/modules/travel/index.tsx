@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Button, Space, Select, Typography, Grid, message } from 'antd'
 import { PlusOutlined, DownloadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -9,7 +9,8 @@ import type { Trip } from '@/shared/db'
 import TripForm from './components/TripForm'
 import TripDetail from './components/TripDetail'
 import FootprintMap from './components/FootprintMap'
-import { colors, gradients, shadows } from '@/shared/theme'
+import { useTheme } from '@/shared/hooks/useTheme'
+import { CardSkeleton } from '@/shared/components/Skeleton'
 import {
   exportTravelCSV, computeStats, formatCost, tripDays, formatDateRange,
   sortTrips, getTripStatusLabel, T,
@@ -29,6 +30,7 @@ const SORT_OPTIONS = [
 ]
 
 export default function Travel() {
+  const { colors, gradients, shadows, glass } = useTheme()
   const db = useDb()
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
@@ -43,8 +45,52 @@ export default function Travel() {
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('half')
 
-  const trips = useLiveQuery(() => db.trips.orderBy('startDate').filter(r => !r.deletedAt).reverse().toArray(), [db]) ?? []
+  // Touch gesture support for mobile bottom sheet
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const touchStartY = useRef(0)
+  const touchStartHeight = useRef(0)
+
+  const snapHeights = {
+    peek: window.innerHeight * 0.15,
+    half: window.innerHeight * 0.5,
+    full: window.innerHeight * 0.85,
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    if (!touch) return
+    touchStartY.current = touch.clientY
+    const currentHeight = snapHeights[sheetSnap]
+    touchStartHeight.current = currentHeight
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!sheetRef.current) return
+    const touch = e.touches[0]
+    if (!touch) return
+    const deltaY = touchStartY.current - touch.clientY
+    const newHeight = Math.max(snapHeights.peek, Math.min(snapHeights.full, touchStartHeight.current + deltaY))
+    sheetRef.current.style.height = `${newHeight}px`
+    sheetRef.current.style.transition = 'none'
+  }
+
+  const handleTouchEnd = () => {
+    if (!sheetRef.current) return
+    const currentHeight = sheetRef.current.getBoundingClientRect().height
+    // Snap to nearest position
+    const entries = Object.entries(snapHeights) as [string, number][]
+    const closest = entries.reduce((prev, curr) =>
+      Math.abs(curr[1] - currentHeight) < Math.abs(prev[1] - currentHeight) ? curr : prev
+    )
+    setSheetSnap(closest[0] as 'peek' | 'half' | 'full')
+    sheetRef.current.style.transition = 'height 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+    sheetRef.current.style.height = ''
+  }
+
+  const tripsRaw = useLiveQuery(() => db.trips.orderBy('startDate').filter(r => !r.deletedAt).reverse().toArray(), [db])
+  const trips = tripsRaw ?? []
   const allSpots = useLiveQuery(() => db.tripSpots.filter(r => !r.deletedAt).toArray(), [db]) ?? []
+  const tripsLoading = tripsRaw === undefined
 
   const filteredTrips = useMemo(() => {
     let result = trips
@@ -212,7 +258,9 @@ export default function Travel() {
                   ...T.glassCard,
                   cursor: 'pointer',
                   overflow: 'hidden',
-                }}
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: 'auto 180px',
+                } as React.CSSProperties}
               >
                 {/* Cover photo strip */}
                 {trip.coverPhoto ? (
@@ -360,8 +408,10 @@ export default function Travel() {
 
   const panelGlass: React.CSSProperties = {
     ...T.glass,
-    background: 'rgba(255,255,255,0.82)',
+    ...glass.panel,
   }
+
+  if (tripsLoading) return <CardSkeleton count={3} />
 
   return (
     <>
@@ -428,7 +478,12 @@ export default function Travel() {
 
         {/* Mobile: glass bottom sheet */}
         {isMobile && (
-          <div style={{
+          <div
+            ref={sheetRef}
+            role="dialog"
+            aria-label="行程列表"
+            tabIndex={0}
+            style={{
             position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 900,
             height: sheetSnap === 'peek' ? 100 : sheetSnap === 'half' ? '50%' : '85%',
             transition: 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -438,6 +493,9 @@ export default function Travel() {
             display: 'flex', flexDirection: 'column',
           }}>
             <div
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
               onClick={() => {
                 if (sheetSnap === 'peek') setSheetSnap('half')
                 else if (sheetSnap === 'full') setSheetSnap('half')
