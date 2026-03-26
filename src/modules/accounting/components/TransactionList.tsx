@@ -31,12 +31,13 @@ export default function TransactionList({ ledgerId, yearMonth, filterDate, onCle
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([ledgerId, start], [ledgerId, end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, ledgerId, start, end],
   ) ?? []
 
   const categories = useLiveQuery(
-    () => db.accCategories.toArray(),
+    () => db.accCategories.filter(r => !r.deletedAt).toArray(),
     [db],
   ) ?? []
 

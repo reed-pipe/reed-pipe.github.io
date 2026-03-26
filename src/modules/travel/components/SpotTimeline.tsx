@@ -39,8 +39,8 @@ export default function SpotTimeline({ spots, tripStartDate, onEditSpot, onDataC
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1
     if (swapIdx < 0 || swapIdx >= daySpots.length) return
     const other = daySpots[swapIdx]!
-    await db.tripSpots.update(spot.id, { sortOrder: other.sortOrder })
-    await db.tripSpots.update(other.id, { sortOrder: spot.sortOrder })
+    await db.tripSpots.update(spot.id, { sortOrder: other.sortOrder, updatedAt: Date.now() })
+    await db.tripSpots.update(other.id, { sortOrder: spot.sortOrder, updatedAt: Date.now() })
     onDataChanged?.()
   }
 

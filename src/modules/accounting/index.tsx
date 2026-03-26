@@ -47,7 +47,7 @@ export default function Accounting() {
     init()
   }, [db, storeLoaded])
 
-  const ledgers = useLiveQuery(() => db.ledgers.orderBy('sortOrder').toArray(), [db]) ?? []
+  const ledgers = useLiveQuery(() => db.ledgers.orderBy('sortOrder').filter(r => !r.deletedAt).toArray(), [db]) ?? []
   const currentLedgerId = defaultLedgerId ?? ledgers.find(l => l.isDefault)?.id ?? ledgers[0]?.id ?? 0
 
   const setLedgerId = useCallback((id: number) => {
@@ -78,6 +78,7 @@ export default function Accounting() {
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([currentLedgerId, start], [currentLedgerId, end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, currentLedgerId, start, end],
   ) ?? []

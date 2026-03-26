@@ -56,6 +56,7 @@ export async function seedDefaultCategories(db: AppDb) {
       isCustom: false,
       sortOrder: i,
       createdAt: now + i,
+      updatedAt: now + i,
     }))
     await db.accCategories.bulkAdd(items)
   } catch {
@@ -74,6 +75,7 @@ export async function seedDefaultLedger(db: AppDb) {
       isDefault: true,
       sortOrder: 0,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     })
   } catch {
     // Ignore duplicate key errors from concurrent calls

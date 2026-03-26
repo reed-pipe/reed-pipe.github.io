@@ -54,6 +54,7 @@ export default function MeasurementForm({ onDataChanged }: Props) {
       rightThigh: values.rightThigh ?? undefined,
       note: values.note || undefined,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     })
 
     onDataChanged()

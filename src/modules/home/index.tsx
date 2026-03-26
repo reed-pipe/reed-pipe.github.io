@@ -79,9 +79,9 @@ export default function Home() {
   const [quickWeight, setQuickWeight] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const records = useLiveQuery(() => db.weightRecords.orderBy('createdAt').toArray(), [db]) ?? []
-  const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
-  const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
+  const records = useLiveQuery(() => db.weightRecords.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db]) ?? []
+  const trips = useLiveQuery(() => db.trips.orderBy('startDate').filter(r => !r.deletedAt).reverse().toArray(), [db]) ?? []
+  const allSpots = useLiveQuery(() => db.tripSpots.filter(r => !r.deletedAt).toArray(), [db]) ?? []
 
   const heightVal = useLiveQuery(async () => {
     const item = await db.kv.get('body_height')
@@ -140,6 +140,7 @@ export default function Home() {
       weight: quickWeight,
       bmi,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     })
     notifyChanged()
     setQuickWeight(null)
@@ -421,14 +422,14 @@ function AccountingSummaryCard({ onNavigate, isMobile }: { onNavigate: () => voi
   const monthEnd = `${yearMonth}-${String(lastDay).padStart(2, '0')}`
 
   const transactions = useLiveQuery(
-    () => db.accTransactions.where('date').between(monthStart, monthEnd + '\uffff').toArray(),
+    () => db.accTransactions.where('date').between(monthStart, monthEnd + '\uffff').filter(r => !r.deletedAt).toArray(),
     [db, monthStart, monthEnd],
   ) ?? []
 
-  const categories = useLiveQuery(() => db.accCategories.toArray(), [db]) ?? []
+  const categories = useLiveQuery(() => db.accCategories.filter(r => !r.deletedAt).toArray(), [db]) ?? []
 
   const budgets = useLiveQuery(
-    () => db.accBudgets.where('yearMonth').equals(yearMonth).toArray(),
+    () => db.accBudgets.where('yearMonth').equals(yearMonth).filter(r => !r.deletedAt).toArray(),
     [db, yearMonth],
   ) ?? []
 

@@ -107,9 +107,9 @@ export default function TripForm({ open, trip, onClose, onSaved }: Props) {
       }
 
       if (trip) {
-        await db.trips.update(trip.id, data)
+        await db.trips.update(trip.id, { ...data, updatedAt: Date.now() })
       } else {
-        await db.trips.add({ ...data, createdAt: Date.now() } as never)
+        await db.trips.add({ ...data, createdAt: Date.now(), updatedAt: Date.now() } as never)
       }
 
       // 保存出发地为默认值

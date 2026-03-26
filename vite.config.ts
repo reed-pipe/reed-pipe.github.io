@@ -13,8 +13,8 @@ export default defineConfig({
         name: '个人助手',
         short_name: '助手',
         description: '模块化个人工具集 — 旅行、身材管理等',
-        theme_color: '#1677ff',
-        background_color: '#ffffff',
+        theme_color: '#F5722D',
+        background_color: '#FFFFFF',
         display: 'standalone',
         orientation: 'portrait-primary',
         scope: '/',
@@ -24,6 +24,7 @@ export default defineConfig({
             src: '/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
+            purpose: 'any maskable',
           },
           {
             src: '/icon-512.png',
@@ -34,11 +35,12 @@ export default defineConfig({
             src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'maskable',
+            purpose: 'any maskable',
           },
         ],
       },
       workbox: {
+        navigateFallback: '/offline.html',
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         runtimeCaching: [
           {

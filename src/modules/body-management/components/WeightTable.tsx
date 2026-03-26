@@ -44,7 +44,7 @@ export default function WeightTable({ onDataChanged }: Props) {
   const [editForm] = Form.useForm<EditFormValues>()
 
   const records = useLiveQuery(() =>
-    db.weightRecords.orderBy('createdAt').toArray(),
+    db.weightRecords.orderBy('createdAt').filter(r => !r.deletedAt).toArray(),
     [db],
   ) ?? []
 
@@ -68,6 +68,7 @@ export default function WeightTable({ onDataChanged }: Props) {
       bmi,
       bodyFat: values.bodyFat ?? undefined,
       note: values.note || undefined,
+      updatedAt: Date.now(),
     })
     onDataChanged()
     setEditingRecord(null)

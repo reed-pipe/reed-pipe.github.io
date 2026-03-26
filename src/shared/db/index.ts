@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type Collection, type EntityTable } from 'dexie'
 
 export interface KVItem {
   key: string
@@ -14,6 +14,8 @@ export interface WeightRecord {
   bodyFat?: number // 体脂率 %
   note?: string
   createdAt: number // timestamp
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export interface BodyMeasurement {
@@ -28,6 +30,8 @@ export interface BodyMeasurement {
   rightThigh?: number // 右腿围 cm
   note?: string
   createdAt: number // timestamp
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export type TransportType = 'plane' | 'train' | 'car' | 'bus' | 'ship' | 'bike' | 'walk' | 'other'
@@ -50,6 +54,8 @@ export interface Trip {
   rating?: number // 1-5
   totalCost?: number
   createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export interface TripSpot {
@@ -67,6 +73,8 @@ export interface TripSpot {
   transport?: TransportType
   sortOrder: number
   createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export type TransactionType = 'expense' | 'income'
@@ -79,6 +87,8 @@ export interface Ledger {
   isDefault: boolean
   sortOrder: number
   createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export interface AccCategory {
@@ -90,6 +100,8 @@ export interface AccCategory {
   isCustom: boolean
   sortOrder: number
   createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export interface AccTransaction {
@@ -101,7 +113,10 @@ export interface AccTransaction {
   note: string
   tags: string[]
   date: string // "YYYY-MM-DD"
+  recurringId?: number // 由定期规则生成时关联规则 id
   createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
 }
 
 export interface AccBudget {
@@ -109,6 +124,47 @@ export interface AccBudget {
   yearMonth: string // "2026-03"
   categoryId: number | null // null = 月度总预算
   amount: number
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
+}
+
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly'
+
+export interface AccRecurring {
+  id: number
+  ledgerId: number
+  type: TransactionType
+  categoryId: number
+  amount: number
+  note: string
+  tags: string[]
+  frequency: RecurringFrequency
+  startDate: string // "YYYY-MM-DD"
+  endDate: string | null // null = 永久
+  lastGeneratedDate: string | null
+  isActive: boolean
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number | null
+}
+
+export interface SyncQueueItem {
+  id: number
+  action: 'create' | 'update' | 'delete'
+  table: string
+  recordId: string | number
+  data: unknown
+  createdAt: number
+}
+
+export interface SyncConflict {
+  id: number
+  table: string
+  recordId: string | number
+  localData: unknown
+  remoteData: unknown
+  status: 'pending' | 'resolved'
   createdAt: number
 }
 
@@ -122,6 +178,9 @@ export type AppDb = Dexie & {
   accCategories: EntityTable<AccCategory, 'id'>
   accTransactions: EntityTable<AccTransaction, 'id'>
   accBudgets: EntityTable<AccBudget, 'id'>
+  accRecurring: EntityTable<AccRecurring, 'id'>
+  syncQueue: EntityTable<SyncQueueItem, 'id'>
+  syncConflicts: EntityTable<SyncConflict, 'id'>
 }
 
 export function createDb(username: string): AppDb {
@@ -172,5 +231,53 @@ export function createDb(username: string): AppDb {
     accBudgets: '++id, yearMonth, categoryId, createdAt, [yearMonth+categoryId]',
   })
 
+  // v7: sync upgrade + recurring transactions
+  db.version(7).stores({
+    kv: 'key',
+    weightRecords: '++id, date, createdAt, updatedAt, deletedAt',
+    bodyMeasurements: '++id, date, createdAt, updatedAt, deletedAt',
+    trips: '++id, startDate, createdAt, updatedAt, deletedAt',
+    tripSpots: '++id, tripId, date, createdAt, updatedAt, deletedAt',
+    ledgers: '++id, sortOrder, createdAt, updatedAt, deletedAt',
+    accCategories: '++id, type, sortOrder, createdAt, updatedAt, deletedAt',
+    accTransactions: '++id, ledgerId, type, categoryId, date, createdAt, updatedAt, deletedAt, [ledgerId+date], [ledgerId+type+date]',
+    accBudgets: '++id, yearMonth, categoryId, createdAt, updatedAt, deletedAt, [yearMonth+categoryId]',
+    accRecurring: '++id, ledgerId, frequency, isActive, createdAt, updatedAt, deletedAt',
+    syncQueue: '++id, action, table, recordId, createdAt',
+    syncConflicts: '++id, table, recordId, status, createdAt',
+  }).upgrade(async (tx) => {
+    // Idempotent: backfill updatedAt from createdAt, set deletedAt to null
+    const tables = [
+      'weightRecords', 'bodyMeasurements', 'trips', 'tripSpots',
+      'ledgers', 'accCategories', 'accTransactions', 'accBudgets',
+    ] as const
+    for (const tableName of tables) {
+      await tx.table(tableName).toCollection().modify((record: Record<string, unknown>) => {
+        if (record.updatedAt === undefined) {
+          record.updatedAt = record.createdAt ?? Date.now()
+        }
+        if (record.deletedAt === undefined) {
+          record.deletedAt = null
+        }
+      })
+    }
+  })
+
   return db
 }
+
+/** Filter out soft-deleted records from a Dexie collection */
+export function alive<T extends { deletedAt?: number | null }>(
+  collection: Collection<T, unknown>
+): Collection<T, unknown> {
+  return collection.filter((r) => !r.deletedAt)
+}
+
+/** Sync-participating table names (kv uses different merge strategy) */
+export const SYNCED_TABLES = [
+  'weightRecords', 'bodyMeasurements', 'trips', 'tripSpots',
+  'ledgers', 'accCategories', 'accTransactions', 'accBudgets', 'accRecurring',
+] as const
+
+/** Tables that are local-only and should NOT be synced */
+export const LOCAL_ONLY_TABLES = ['syncQueue', 'syncConflicts'] as const

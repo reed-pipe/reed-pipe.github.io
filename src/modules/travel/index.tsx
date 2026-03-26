@@ -43,8 +43,8 @@ export default function Travel() {
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('half')
 
-  const trips = useLiveQuery(() => db.trips.orderBy('startDate').reverse().toArray(), [db]) ?? []
-  const allSpots = useLiveQuery(() => db.tripSpots.toArray(), [db]) ?? []
+  const trips = useLiveQuery(() => db.trips.orderBy('startDate').filter(r => !r.deletedAt).reverse().toArray(), [db]) ?? []
+  const allSpots = useLiveQuery(() => db.tripSpots.filter(r => !r.deletedAt).toArray(), [db]) ?? []
 
   const filteredTrips = useMemo(() => {
     let result = trips

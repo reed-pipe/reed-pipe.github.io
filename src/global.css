@@ -24,11 +24,17 @@
   scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
 }
 
+/* --- Color scheme --- */
+:root {
+  color-scheme: light dark;
+}
+
 /* --- Base resets --- */
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* --- Selection --- */
@@ -96,14 +102,9 @@ img {
 
 /* Staggered children */
 .stagger-children > * {
-  animation: fadeInUp 0.35s ease-out both;
+  animation: fadeInUp 0.4s ease both;
+  animation-delay: calc(var(--i, 0) * 0.06s);
 }
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
 
 /* Pulse glow for active status */
 @keyframes pulseGlow {
@@ -114,13 +115,12 @@ img {
   animation: pulseGlow 2s ease-in-out infinite;
 }
 
-/* Shimmer for loading states */
-@keyframes shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: calc(200px + 100%) 0; }
+/* --- Accessibility: reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
-.shimmer {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
-  background-size: 200px 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-}
+

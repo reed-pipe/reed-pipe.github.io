@@ -1,8 +1,7 @@
 import { useEffect } from 'react'
 import { useRoutes } from 'react-router-dom'
-import { ConfigProvider, Spin } from 'antd'
+import { ConfigProvider, Spin, theme as antTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
-import { antThemeToken } from './shared/theme'
 import { routes } from './router'
 import AppLayout from './shared/components/AppLayout'
 import LoginPage from './shared/auth/LoginPage'
@@ -11,6 +10,7 @@ import { DbProvider } from './shared/db/context'
 import { useSyncStore } from './shared/sync/store'
 import { pullData, pushData } from './shared/sync/sync'
 import { useDb } from './shared/db/context'
+import { useTheme } from './shared/hooks/useTheme'
 
 function SyncOnMount() {
   const { cryptoKey, dataGistId, username } = useAuthStore()
@@ -60,14 +60,31 @@ function AuthenticatedApp() {
 
 export default function App() {
   const { username, initialized, init } = useAuthStore()
+  const { isDark, antThemeToken } = useTheme()
+
+  // Set data-theme attribute and transition on document root
+  useEffect(() => {
+    const root = document.documentElement
+    root.setAttribute('data-theme', isDark ? 'dark' : 'light')
+    root.style.colorScheme = isDark ? 'dark' : 'light'
+    // Ensure smooth transition for theme changes
+    if (!root.style.transition) {
+      root.style.transition = 'background-color 0.3s ease, color 0.3s ease'
+    }
+  }, [isDark])
 
   useEffect(() => {
     void init()
   }, [init])
 
+  const themeConfig = {
+    token: antThemeToken,
+    algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+  }
+
   if (!initialized) {
     return (
-      <ConfigProvider locale={zhCN} theme={{ token: antThemeToken }}>
+      <ConfigProvider locale={zhCN} theme={themeConfig}>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
           <Spin size="large" />
         </div>
@@ -76,7 +93,7 @@ export default function App() {
   }
 
   return (
-    <ConfigProvider locale={zhCN} theme={{ token: antThemeToken }}>
+    <ConfigProvider locale={zhCN} theme={themeConfig}>
       {username ? <AuthenticatedApp /> : <LoginPage />}
     </ConfigProvider>
   )

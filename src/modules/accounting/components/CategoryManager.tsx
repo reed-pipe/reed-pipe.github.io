@@ -24,7 +24,7 @@ export default function CategoryManager({ open, onClose }: Props) {
   const [editing, setEditing] = useState<Partial<AccCategory> | null>(null)
 
   const categories = useLiveQuery(
-    () => db.accCategories.where('type').equals(type).sortBy('sortOrder'),
+    () => db.accCategories.where('type').equals(type).filter(r => !r.deletedAt).sortBy('sortOrder'),
     [db, type],
   ) ?? []
 
@@ -38,6 +38,7 @@ export default function CategoryManager({ open, onClose }: Props) {
         name: editing.name,
         emoji: editing.emoji || '💰',
         color: editing.color || '#6B7280',
+        updatedAt: Date.now(),
       })
     } else {
       await db.accCategories.add({
@@ -48,6 +49,7 @@ export default function CategoryManager({ open, onClose }: Props) {
         isCustom: true,
         sortOrder: categories.length,
         createdAt: Date.now(),
+        updatedAt: Date.now(),
       })
     }
     notifyChanged()

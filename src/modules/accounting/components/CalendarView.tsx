@@ -23,6 +23,7 @@ export default function CalendarView({ ledgerId, yearMonth, onSelectDate }: Prop
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([ledgerId, start], [ledgerId, end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, ledgerId, start, end],
   ) ?? []

@@ -24,6 +24,7 @@ export default function MonthlySummary({ ledgerId, yearMonth, compactMode }: Pro
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([ledgerId, start], [ledgerId, end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, ledgerId, start, end],
   ) ?? []
@@ -53,6 +54,7 @@ export default function MonthlySummary({ ledgerId, yearMonth, compactMode }: Pro
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([ledgerId, prevRange.start], [ledgerId, prevRange.end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, ledgerId, prevRange.start, prevRange.end],
   ) ?? []

@@ -68,6 +68,7 @@ export default function WeightForm({ onDataChanged }: Props) {
             bmi,
             bodyFat: values.bodyFat ?? undefined,
             note: values.note || undefined,
+            updatedAt: Date.now(),
           })
           onDataChanged()
           resetForm()
@@ -85,6 +86,7 @@ export default function WeightForm({ onDataChanged }: Props) {
       bodyFat: values.bodyFat ?? undefined,
       note: values.note || undefined,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     })
 
     onDataChanged()

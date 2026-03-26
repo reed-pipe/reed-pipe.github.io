@@ -54,11 +54,11 @@ export default function BodyManagement() {
   }, [loaded, load, db])
 
   const records = useLiveQuery(() =>
-    db.weightRecords.orderBy('createdAt').toArray(), [db],
+    db.weightRecords.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db],
   ) ?? []
 
   const measurements = useLiveQuery(() =>
-    db.bodyMeasurements.orderBy('createdAt').toArray(), [db],
+    db.bodyMeasurements.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db],
   ) ?? []
 
   const filteredRecords = useMemo(() => {

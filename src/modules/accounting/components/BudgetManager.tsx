@@ -54,7 +54,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
 
   const budgets = useLiveQuery(
-    () => db.accBudgets.where('yearMonth').equals(yearMonth).toArray(),
+    () => db.accBudgets.where('yearMonth').equals(yearMonth).filter(r => !r.deletedAt).toArray(),
     [db, yearMonth],
   ) ?? []
 
@@ -66,7 +66,7 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
   }, [yearMonth])
 
   const prevBudgets = useLiveQuery(
-    () => db.accBudgets.where('yearMonth').equals(prevMonthKey).toArray(),
+    () => db.accBudgets.where('yearMonth').equals(prevMonthKey).filter(r => !r.deletedAt).toArray(),
     [db, prevMonthKey],
   ) ?? []
 
@@ -74,12 +74,13 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
     () => db.accTransactions
       .where('[ledgerId+type+date]')
       .between([ledgerId, 'expense', start], [ledgerId, 'expense', end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, ledgerId, start, end],
   ) ?? []
 
   const categories = useLiveQuery(
-    () => db.accCategories.where('type').equals('expense').sortBy('sortOrder'),
+    () => db.accCategories.where('type').equals('expense').filter(r => !r.deletedAt).sortBy('sortOrder'),
     [db],
   ) ?? []
 
@@ -133,9 +134,9 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
     const existingTotal = budgets.find(b => b.categoryId === null)
     if (totalVal > 0) {
       if (existingTotal) {
-        await db.accBudgets.update(existingTotal.id, { amount: totalVal })
+        await db.accBudgets.update(existingTotal.id, { amount: totalVal, updatedAt: Date.now() })
       } else {
-        await db.accBudgets.add({ yearMonth, categoryId: null, amount: totalVal, createdAt: Date.now() })
+        await db.accBudgets.add({ yearMonth, categoryId: null, amount: totalVal, createdAt: Date.now(), updatedAt: Date.now() })
       }
     } else if (existingTotal) {
       await db.accBudgets.delete(existingTotal.id)
@@ -145,8 +146,8 @@ export default function BudgetManager({ ledgerId, yearMonth }: Props) {
       const amount = parseFloat(categoryBudgets[cat.id] ?? '')
       const existing = budgets.find(b => b.categoryId === cat.id)
       if (amount > 0) {
-        if (existing) await db.accBudgets.update(existing.id, { amount })
-        else await db.accBudgets.add({ yearMonth, categoryId: cat.id, amount, createdAt: Date.now() })
+        if (existing) await db.accBudgets.update(existing.id, { amount, updatedAt: Date.now() })
+        else await db.accBudgets.add({ yearMonth, categoryId: cat.id, amount, createdAt: Date.now(), updatedAt: Date.now() })
       } else if (existing) {
         await db.accBudgets.delete(existing.id)
       }

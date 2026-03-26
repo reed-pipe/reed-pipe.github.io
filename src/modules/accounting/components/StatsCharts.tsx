@@ -25,12 +25,13 @@ export default function StatsCharts({ ledgerId, yearMonth }: Props) {
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([ledgerId, start], [ledgerId, end + '\uffff'])
+      .filter(r => !r.deletedAt)
       .toArray(),
     [db, ledgerId, start, end],
   ) ?? []
 
   const categories = useLiveQuery(
-    () => db.accCategories.toArray(),
+    () => db.accCategories.filter(r => !r.deletedAt).toArray(),
     [db],
   ) ?? []
 

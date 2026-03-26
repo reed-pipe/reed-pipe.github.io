@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Drawer, Button, Grid, Dropdown } from 'antd'
+import { Layout, Menu, Drawer, Button, Grid, Dropdown, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
-import { MenuOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons'
+import { MenuOutlined, UserOutlined, LogoutOutlined, SunOutlined, MoonOutlined, DesktopOutlined } from '@ant-design/icons'
 import { routes, type RouteConfig } from '../../router'
 import { useAuthStore } from '../auth/store'
 import SyncIndicator from '../sync/SyncIndicator'
-import { colors, gradients, shadows } from '../theme'
+import { useTheme, type ThemeMode } from '@/shared/hooks/useTheme'
 
 const { Header, Sider, Content } = Layout
 const { useBreakpoint } = Grid
@@ -23,6 +23,18 @@ function buildMenuItems(routeConfigs: RouteConfig[]): MenuProps['items'] {
 
 const menuItems = buildMenuItems(routes)
 
+const themeLabels: Record<ThemeMode, string> = {
+  light: '浅色模式',
+  dark: '深色模式',
+  system: '跟随系统',
+}
+
+function nextMode(current: ThemeMode): ThemeMode {
+  if (current === 'light') return 'dark'
+  if (current === 'dark') return 'system'
+  return 'light'
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -32,6 +44,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const isMobile = !screens.md
 
   const { username, logout } = useAuthStore()
+  const { isDark, colors, gradients, shadows, mode, setMode } = useTheme()
 
   const onMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key)
@@ -102,7 +115,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const pageTitle = routes.find((r) => r.path === location.pathname)?.label ?? ''
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', transition: 'background-color 0.3s ease' }}>
       {isMobile ? (
         <Drawer
           placement="left"
@@ -110,7 +123,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           onClose={() => setDrawerOpen(false)}
           width={240}
           styles={{
-            body: { padding: 0, background: '#FAFAFA' },
+            body: { padding: 0, background: isDark ? colors.bg : '#FAFAFA', transition: 'background-color 0.3s ease' },
             header: { display: 'none' },
           }}
         >
@@ -124,11 +137,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           collapsible
           collapsed={collapsed}
           onCollapse={setCollapsed}
-          theme="light"
+          theme={isDark ? 'dark' : 'light'}
           width={220}
           style={{
-            background: '#FAFAFA',
+            background: isDark ? colors.bg : '#FAFAFA',
             borderRight: `1px solid ${colors.borderLight}`,
+            transition: 'background-color 0.3s ease, border-color 0.3s ease',
           }}
         >
           {logo}
@@ -138,11 +152,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </Sider>
       )}
 
-      <Layout style={{ background: '#F7F7F8' }}>
+      <Layout style={{ background: isDark ? colors.bg : '#F7F7F8', transition: 'background-color 0.3s ease' }}>
         <Header
           style={{
             padding: isMobile ? '0 16px' : '0 28px',
-            background: 'rgba(255,255,255,0.85)',
+            background: isDark ? 'rgba(28,28,28,0.85)' : 'rgba(255,255,255,0.85)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             display: 'flex',
@@ -151,10 +165,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             height: 56,
             lineHeight: '56px',
             borderBottom: `1px solid ${colors.borderLight}`,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            boxShadow: isDark ? '0 1px 3px rgba(0,0,0,0.12)' : '0 1px 3px rgba(0,0,0,0.02)',
             position: 'sticky',
             top: 0,
             zIndex: 100,
+            transition: 'background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease',
           }}
         >
           {isMobile && (
@@ -171,10 +186,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             fontWeight: 700,
             letterSpacing: '-0.01em',
             color: colors.text,
+            transition: 'color 0.3s ease',
           }}>
             {pageTitle}
           </span>
           <SyncIndicator />
+          <Tooltip title={themeLabels[mode]}>
+            <Button
+              type="text"
+              size="small"
+              icon={mode === 'light' ? <SunOutlined /> : mode === 'dark' ? <MoonOutlined /> : <DesktopOutlined />}
+              onClick={() => setMode(nextMode(mode))}
+            />
+          </Tooltip>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <Button
               type="text"
@@ -213,10 +237,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           style={{
             margin: isMobile ? 0 : 20,
             padding: isMobile ? '8px 12px 12px' : 24,
-            background: isMobile ? '#fff' : '#fff',
+            background: isDark ? colors.bgElevated : '#fff',
             borderRadius: isMobile ? 0 : 16,
             minHeight: 280,
             boxShadow: isMobile ? 'none' : shadows.sm,
+            transition: 'background-color 0.3s ease, box-shadow 0.3s ease',
           }}
         >
           {children}

@@ -107,12 +107,13 @@ export default function SpotForm({ open, tripId, tripStartDate, tripEndDate, spo
       }
 
       if (spot) {
-        await db.tripSpots.update(spot.id, data)
+        await db.tripSpots.update(spot.id, { ...data, updatedAt: Date.now() })
       } else {
         await db.tripSpots.add({
           ...data,
           sortOrder: nextSortOrder,
           createdAt: Date.now(),
+          updatedAt: Date.now(),
         } as never)
       }
 

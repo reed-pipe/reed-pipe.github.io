@@ -49,7 +49,7 @@ export default function PhotoGallery({ spots, tripStartDate, onDataChanged }: Pr
         const spot = await db.tripSpots.get(spotId)
         if (!spot) return
         const newPhotos = spot.photos.filter((_, i) => i !== photoIdx)
-        await db.tripSpots.update(spotId, { photos: newPhotos })
+        await db.tripSpots.update(spotId, { photos: newPhotos, updatedAt: Date.now() })
         onDataChanged?.()
         message.success('已删除')
       },

@@ -25,7 +25,7 @@ export default function LedgerSelector({ value, onChange }: Props) {
   const [editingLedger, setEditingLedger] = useState<Partial<Ledger> | null>(null)
 
   const ledgers = useLiveQuery(
-    () => db.ledgers.orderBy('sortOrder').toArray(),
+    () => db.ledgers.orderBy('sortOrder').filter(r => !r.deletedAt).toArray(),
     [db],
   ) ?? []
 
@@ -39,6 +39,7 @@ export default function LedgerSelector({ value, onChange }: Props) {
         name: editingLedger.name,
         emoji: editingLedger.emoji || '📒',
         color: editingLedger.color || '#F5722D',
+        updatedAt: Date.now(),
       })
     } else {
       const id = await db.ledgers.add({
@@ -48,6 +49,7 @@ export default function LedgerSelector({ value, onChange }: Props) {
         isDefault: false,
         sortOrder: ledgers.length,
         createdAt: Date.now(),
+        updatedAt: Date.now(),
       })
       onChange(id as number)
     }

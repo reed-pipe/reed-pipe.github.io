@@ -61,7 +61,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   const [date, setDate] = useState(dayjs().format('YYYY-MM-DD'))
 
   const categories = useLiveQuery(
-    () => db.accCategories.where('type').equals(type).sortBy('sortOrder'),
+    () => db.accCategories.where('type').equals(type).filter(r => !r.deletedAt).sortBy('sortOrder'),
     [db, type],
   ) ?? []
 
@@ -120,12 +120,12 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
     if (editingTransaction) {
       await db.accTransactions.update(editingTransaction.id, {
         type, categoryId, amount, note: remark, tags: editingTransaction.tags,
-        date,
+        date, updatedAt: Date.now(),
       })
     } else {
       await db.accTransactions.add({
         ledgerId, type, categoryId, amount, note: remark, tags: [],
-        date, createdAt: Date.now(),
+        date, createdAt: Date.now(), updatedAt: Date.now(),
       })
     }
     if (remark.trim()) useAccountingStore.getState().addNoteHistory(remark.trim(), db)
