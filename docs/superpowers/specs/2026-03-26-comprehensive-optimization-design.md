@@ -31,19 +31,37 @@
 
 **方案**：
 - 所有记录表增加 `updatedAt: number`（timestamp）字段
-- Pull 逻辑从"清空 + 全量写入"改为逐条 merge：
-  - 云端有、本地无 → 插入
-  - 本地有、云端无 → 保留（下次 push 上传）
-  - 双端都有 → 比较 `updatedAt`，取较新者
-  - 双端都有且 `updatedAt` 相同但内容不同 → 标记冲突，UI 提示用户选择
-- 删除操作改为软删除：增加 `deletedAt: number | null` 字段
+- 所有记录表增加 `deletedAt: number | null` 字段（软删除）
+  - 所有查询层面加 `.filter(r => !r.deletedAt)` 过滤已删除记录
   - 同步时传播删除状态
   - 本地定期清理超过 30 天的软删除记录
+  - TypeScript 接口统一增加 `updatedAt: number` 和 `deletedAt?: number | null`
+
+**完整同步流程（pull-merge-push 协议）**：
+
+Push 不再是单纯的全量覆盖，而是 pull-merge-push 三步：
+1. **Pull latest** — 从 Gist 拉取最新云端数据
+2. **Three-way merge** — 以上次同步快照为 base，对比本地变更和云端变更：
+   - 云端有、本地无 → 插入本地
+   - 本地有、云端无 → 保留（将随 push 上传）
+   - 双端都有 → 比较 `updatedAt`，取较新者
+   - 双端都有且 `updatedAt` 相同但内容不同 → 写入 `syncConflicts` 表，UI 提示用户选择
+3. **Push merged** — 将合并后的完整数据加密推送到 Gist
+
+**并发安全**：GitHub Gist API 无 CAS（compare-and-swap），因此：
+- 每次 push 前必须先 pull，将 pull-merge-push 作为原子操作（JS 层面串行化）
+- 使用模块级锁（`let syncLock = false`）防止并发 push
+- 极端情况（两设备同一秒 push）仍可能丢失，但对个人工具的使用场景概率极低
+
+**同步快照**：
+- 每次成功 push 后，将当前数据的 hash 存入 localStorage（`sync_snapshot_hash`）
+- 下次 push 时用此 hash 判断本地是否有变更，无变更则跳过
 
 **数据库变更**：
 - Dexie 升级至 v7
-- 所有记录表新增索引 `updatedAt`
-- 新增 `syncConflicts` 表：`++id, table, recordId, localData, remoteData, createdAt`
+- 所有记录表新增索引 `updatedAt` 和 `deletedAt`
+- 新增 `syncConflicts` 表：`++id, table, recordId, localData, remoteData, status, createdAt`
+  - `status`: `'pending' | 'resolved'`，支持冲突解决历史追溯
 
 **UI 变更**：
 - SyncIndicator 增加冲突计数 badge
@@ -63,6 +81,19 @@
 - 存储结构：照片字段从 `string` 改为 `{ full: string, thumb: string }`
 - 列表/卡片展示用缩略图，点击/详情用原图
 - 向后兼容：检测旧格式（纯 string），读取时当作 full 处理
+
+**Gist 存储限制应对**：
+GitHub Gist 单文件限制约 1MB。当前 blob Gist 存储所有照片，随照片增多会超限。
+- Blob Gist 按容量自动分片：`pa-blob-{username}-1.json`、`pa-blob-{username}-2.json`...
+- 每个分片控制在 800KB 以内（留 200KB 余量）
+- 分片索引存储在 data Gist 中（`_blobIndex: { shardCount: number, shardHashes: string[] }`）
+- Pull 时按索引拉取所有分片，Push 时只更新有变更的分片
+
+**同步版本升级**：
+- `syncVersion` 从 2 升至 3
+- v3 格式：照片字段为 `{ full, thumb }` 对象
+- Pull 时检测版本：v2 格式（纯 string）自动转换为 v3 格式
+- 保证滚动升级兼容：未升级设备收到 v3 数据时，取 `.full` 字段降级为 string
 
 ### 1.3 PWA 修复
 
@@ -84,10 +115,11 @@
 **现状**：离线时同步失败，无重试，用户无感知。
 
 **方案**：
-- Dexie 新增 `syncQueue` 表：`++id, action, table, recordId, data, createdAt`
-- 数据变更时同时写入 syncQueue
+- Dexie 新增 `syncQueue` 表：`++id, action, table, recordId, data, createdAt`（**本地专用，不参与云端同步**）
+- 离线检测：`navigator.onLine` 为 false 时，数据变更写入 syncQueue 而非触发即时同步
+- 在线时行为不变：直接触发 debounced push（不经过 queue）
 - 监听 `window.addEventListener('online', flushSyncQueue)`
-- 网络恢复时按队列顺序重放变更，成功后清除队列
+- `flushSyncQueue` 实现：不逐条重放，而是触发一次完整的 pull-merge-push 流程（与 1.1 的同步协议一致），成功后清空队列
 - SyncIndicator 显示待同步条数（如 "3 条待同步"）
 - 超过 3 次重试失败的条目标记为 error，用户可手动重试或丢弃
 
@@ -100,9 +132,11 @@
 **方案**：
 
 **Token 体系改造**：
-- `theme.ts` 重构为导出函数 `getThemeTokens(mode: 'light' | 'dark')`
-- 语义变量名不变（`colors.text`、`colors.bg` 等），值按模式切换
-- CSS 变量方案：`:root` 定义 light token，`[data-theme="dark"]` 覆盖
+- `theme.ts` 重构为导出两套 token（`lightTokens` / `darkTokens`）
+- 新增 `useTheme()` hook：返回当前模式对应的 token 对象 + `isDark` 布尔值
+- 现有组件中的 `colors.X` 和内联 `background: '#fff'` 等硬编码颜色统一迁移为 `useTheme()` 消费
+- `glass` token 中 `rgba(255,255,255,...)` 在 dark 模式改为 `rgba(30,30,30,...)`
+- 迁移范围评估：约 15-20 个文件需要将硬编码颜色替换为 theme token（涉及所有模块的 index.tsx + 主要组件）
 
 **Dark token 示例**：
 ```
@@ -125,7 +159,7 @@ cardBg:      #FFFFFF → #1C1C1C
 
 **特殊处理**：
 - 记账模块 hero 区（已是深色 `#18181B`）：暗黑模式下调整为稍浅的 `#242424`，保持层次感
-- 地图 tiles：切换为暗色地图图层（CartoDB dark_matter）
+- 地图 tiles：暗黑模式使用高德地图暗色图层（`amap://styles/dark`），保持 GCJ-02 坐标系和国内 POI 数据一致性。若高德无暗色图层，则对现有图层叠加 CSS `filter: invert(1) hue-rotate(180deg)` 近似实现
 - Ant Design：`ConfigProvider` 的 `algorithm` 按模式切换
 
 ### 2.2 骨架屏
@@ -170,7 +204,7 @@ cardBg:      #FFFFFF → #1C1C1C
 
 **清理**：
 - 移除未使用的 `shimmer` keyframe
-- 移除 `pulseGlow`（如未使用）
+- 保留 `pulseGlow`（首页 home/index.tsx 在用）
 
 **统一规范**：
 - 交互反馈（hover, active）：`0.2s ease`
@@ -211,10 +245,13 @@ cardBg:      #FFFFFF → #1C1C1C
   createdAt: number
   ```
 - Dexie 索引：`++id, ledgerId, frequency, isActive, createdAt`
+- `AccRecurring` 表额外增加 `updatedAt` 字段（参与云端同步）
 - 打开记账模块时执行 `generateRecurringTransactions()`：
   - 查询所有 `isActive` 的定期规则
   - 从 `lastGeneratedDate` 到今天，按频率生成缺失的交易记录
-  - 更新 `lastGeneratedDate`
+  - 生成的交易增加 `recurringId` 字段（值为规则 id），用于去重和溯源
+  - 去重策略：插入前检查是否已存在相同 `recurringId + date` 的交易，跳过已存在的
+  - 整个生成过程包裹在 Dexie transaction 中（原子性：生成交易 + 更新 `lastGeneratedDate` 同时成功或同时回滚）
 - UI：预算页旁新增"定期"Tab，列表展示所有规则，支持增删改、暂停/恢复
 
 **快捷记账优化**：
@@ -235,9 +272,12 @@ cardBg:      #FFFFFF → #1C1C1C
 **CSV 数据导入**：
 - 新增 `@/shared/components/CsvImporter.tsx`（可复用组件）：
   - 拖拽/选择 CSV 文件
+  - 编码处理：优先 UTF-8，检测到乱码时自动尝试 GBK 解码（中文 Excel 常见）
+  - 日期格式支持：`YYYY-MM-DD`、`YYYY/MM/DD`、`MM/DD/YYYY`，自动检测
   - 解析预览：表格展示前 10 行
   - 字段映射：用户选择哪列对应日期、体重、体脂等
   - 冲突检测：同日期已有记录时标黄，用户选择覆盖/跳过
+  - 文件大小限制：≤ 2MB
   - 确认导入，写入 Dexie
 
 ### 3.3 旅行模块增强
@@ -246,6 +286,7 @@ cardBg:      #FFFFFF → #1C1C1C
 - 行程列表使用 `content-visibility: auto` + `contain-intrinsic-size`
 - 卡片高度预估 180px（有封面）/ 120px（无封面）
 - 浏览器自动跳过视口外卡片的渲染，100+ 行程流畅
+- 注意：Firefox 不支持 `content-visibility`，但无副作用（降级为正常渲染），性能影响仅在数据量极大时可感知
 
 **地图标记懒加载**：
 - 监听 Leaflet `moveend` 事件，只渲染当前 bounds 内的标记点
@@ -283,21 +324,35 @@ Dexie v7 升级：
 ```typescript
 db.version(7).stores({
   kv: 'key',
-  weightRecords: '++id, date, createdAt, updatedAt',
-  bodyMeasurements: '++id, date, createdAt, updatedAt',
-  trips: '++id, startDate, createdAt, updatedAt',
-  tripSpots: '++id, tripId, date, createdAt, updatedAt',
-  ledgers: '++id, sortOrder, createdAt, updatedAt',
-  accCategories: '++id, type, sortOrder, createdAt, updatedAt',
-  accTransactions: '++id, ledgerId, type, categoryId, date, createdAt, updatedAt, [ledgerId+date], [ledgerId+type+date]',
-  accBudgets: '++id, yearMonth, categoryId, createdAt, updatedAt, [yearMonth+categoryId]',
-  accRecurring: '++id, ledgerId, frequency, isActive, createdAt',
-  syncQueue: '++id, action, table, recordId, createdAt',
-  syncConflicts: '++id, table, recordId, createdAt',
+  weightRecords: '++id, date, createdAt, updatedAt, deletedAt',
+  bodyMeasurements: '++id, date, createdAt, updatedAt, deletedAt',
+  trips: '++id, startDate, createdAt, updatedAt, deletedAt',
+  tripSpots: '++id, tripId, date, createdAt, updatedAt, deletedAt',
+  ledgers: '++id, sortOrder, createdAt, updatedAt, deletedAt',
+  accCategories: '++id, type, sortOrder, createdAt, updatedAt, deletedAt',
+  accTransactions: '++id, ledgerId, type, categoryId, date, createdAt, updatedAt, deletedAt, [ledgerId+date], [ledgerId+type+date]',
+  accBudgets: '++id, yearMonth, categoryId, createdAt, updatedAt, deletedAt, [yearMonth+categoryId]',
+  accRecurring: '++id, ledgerId, frequency, isActive, createdAt, updatedAt',
+  syncQueue: '++id, action, table, recordId, createdAt',          // 本地专用，不参与云端同步
+  syncConflicts: '++id, table, recordId, status, createdAt',      // 本地专用，不参与云端同步
 })
 ```
 
-所有现有记录的 `updatedAt` 通过升级 hook 填充为 `createdAt` 值，`deletedAt` 默认 `null`。
+**同步参与表**：kv, weightRecords, bodyMeasurements, trips, tripSpots, ledgers, accCategories, accTransactions, accBudgets, accRecurring
+**本地专用表**：syncQueue, syncConflicts
+
+**升级 hook**：
+- 所有现有记录的 `updatedAt` 填充为 `createdAt` 值（幂等：仅当 `updatedAt` 为 `undefined` 时填充）
+- `deletedAt` 默认 `null`（幂等：仅当字段不存在时设置）
+- 若升级中途失败（如浏览器关闭），Dexie 下次打开会重新执行，幂等性保证不会重复写入
+
+**TypeScript 接口变更**：所有记录类型统一增加：
+```typescript
+updatedAt: number
+deletedAt?: number | null
+```
+
+**查询层变更**：所有 `useLiveQuery` / `db.table.toArray()` 调用需追加 `.filter(r => !r.deletedAt)` 或封装为 `db.table.where('deletedAt').equals(null)` 工具函数。
 
 ---
 
