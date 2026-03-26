@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Button, Grid, Dropdown, Spin } from 'antd'
+import { Button, Grid, Dropdown } from 'antd'
 import {
   PlusOutlined,
   LeftOutlined,
@@ -12,8 +12,9 @@ import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDb } from '@/shared/db/context'
 import { useAccountingStore } from './store'
-import { seedDefaultCategories, seedDefaultLedger, getMonthRange } from './utils'
+import { seedDefaultCategories, seedDefaultLedger, getMonthRange, generateRecurringTransactions } from './utils'
 import LedgerSelector from './components/LedgerSelector'
+import RecurringManager from './components/RecurringManager'
 import TransactionList from './components/TransactionList'
 import CalendarView from './components/CalendarView'
 import StatsCharts from './components/StatsCharts'
@@ -21,10 +22,13 @@ import BudgetManager from './components/BudgetManager'
 import CategoryManager from './components/CategoryManager'
 import QuickEntry from './components/QuickEntry'
 import ExportModal from './components/ExportModal'
+import { useTheme } from '@/shared/hooks/useTheme'
+import { ListSkeleton } from '@/shared/components/Skeleton'
 
 const { useBreakpoint } = Grid
 
 export default function Accounting() {
+  const { colors, isDark } = useTheme()
   const db = useDb()
   const screens = useBreakpoint()
   const isMobile = !screens.md
@@ -42,6 +46,7 @@ export default function Accounting() {
     const init = async () => {
       await seedDefaultCategories(db)
       await seedDefaultLedger(db)
+      await generateRecurringTransactions(db)
       if (!storeLoaded) await useAccountingStore.getState().load(db)
     }
     init()
@@ -74,14 +79,16 @@ export default function Accounting() {
 
   // Summary data
   const { start, end } = useMemo(() => getMonthRange(yearMonth), [yearMonth])
-  const transactions = useLiveQuery(
+  const transactionsRaw = useLiveQuery(
     () => db.accTransactions
       .where('[ledgerId+date]')
       .between([currentLedgerId, start], [currentLedgerId, end + '\uffff'])
       .filter(r => !r.deletedAt)
       .toArray(),
     [db, currentLedgerId, start, end],
-  ) ?? []
+  )
+  const transactions = transactionsRaw ?? []
+  const transactionsLoading = transactionsRaw === undefined
 
   const { income, expense } = useMemo(() => {
     let income = 0, expense = 0
@@ -94,12 +101,8 @@ export default function Accounting() {
 
   const ymLabel = `${yearMonth.split('-')[0]}年${Number(yearMonth.split('-')[1])}月`
 
-  if (!storeLoaded || ledgers.length === 0) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
-        <Spin size="large" />
-      </div>
-    )
+  if (!storeLoaded || ledgers.length === 0 || transactionsLoading) {
+    return <ListSkeleton rows={6} />
   }
   if (!currentLedgerId) return null
 
@@ -110,7 +113,7 @@ export default function Accounting() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: isMobile ? '0 0 10px' : '0 0 12px',
       }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#18181B', letterSpacing: '-0.02em', margin: 0 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: colors.text, letterSpacing: '-0.02em', margin: 0 }}>
           账单明细
         </h1>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -123,7 +126,7 @@ export default function Accounting() {
 
       {/* Dark hero card */}
       <div style={{
-        background: '#18181B', borderRadius: 20, padding: isMobile ? '20px 20px 16px' : '24px 24px 20px',
+        background: isDark ? '#242424' : '#18181B', borderRadius: 20, padding: isMobile ? '20px 20px 16px' : '24px 24px 20px',
         color: '#fff', marginBottom: isMobile ? 10 : 14, position: 'relative', overflow: 'hidden',
       }}>
         {/* Decorative blurs */}
@@ -180,11 +183,12 @@ export default function Accounting() {
           { key: 'calendar', label: '日历' },
           { key: 'charts', label: '图表' },
           { key: 'budget', label: '预算' },
+          { key: 'recurring', label: '定期' },
         ]
         return (
           <>
             <div style={{
-              display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3,
+              display: 'flex', background: colors.borderLight, borderRadius: 12, padding: 3,
               marginBottom: isMobile ? 10 : 14,
             }}>
               {tabs.map(tab => (
@@ -194,8 +198,8 @@ export default function Accounting() {
                   style={{
                     flex: 1, padding: '6px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                     border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                    background: activeTab === tab.key ? '#fff' : 'transparent',
-                    color: activeTab === tab.key ? '#18181B' : '#A1A1AA',
+                    background: activeTab === tab.key ? colors.bgElevated : 'transparent',
+                    color: activeTab === tab.key ? colors.text : colors.textTertiary,
                     boxShadow: activeTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                   }}
                 >
@@ -207,6 +211,7 @@ export default function Accounting() {
             {activeTab === 'calendar' && <CalendarView ledgerId={currentLedgerId} yearMonth={yearMonth} onSelectDate={handleCalendarDateSelect} />}
             {activeTab === 'charts' && <StatsCharts ledgerId={currentLedgerId} yearMonth={yearMonth} />}
             {activeTab === 'budget' && <BudgetManager ledgerId={currentLedgerId} yearMonth={yearMonth} />}
+            {activeTab === 'recurring' && <RecurringManager ledgerId={currentLedgerId} />}
           </>
         )
       })()}
@@ -217,7 +222,7 @@ export default function Accounting() {
         style={{
           position: 'fixed', right: isMobile ? 20 : 32, bottom: isMobile ? 24 : 32,
           width: 52, height: 52, borderRadius: '50%', border: 'none',
-          background: '#18181B', color: '#fff', fontSize: 22,
+          background: isDark ? '#242424' : '#18181B', color: '#fff', fontSize: 22,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', boxShadow: '0 6px 20px rgba(24,24,27,0.3)',
           zIndex: 100, transition: 'transform 0.2s',

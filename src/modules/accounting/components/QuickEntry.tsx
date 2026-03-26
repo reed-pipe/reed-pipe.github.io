@@ -8,6 +8,7 @@ import { useDataChanged } from '@/shared/sync/useDataChanged'
 import type { AccTransaction, TransactionType } from '@/shared/db'
 import { useAccountingStore } from '../store'
 import { parseCalcExpression } from '../utils'
+import { useTheme } from '@/shared/hooks/useTheme'
 
 const { useBreakpoint } = Grid
 
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export default function QuickEntry({ open, onClose, ledgerId, editingTransaction }: Props) {
+  const { colors, isDark } = useTheme()
   const db = useDb()
   const notifyChanged = useDataChanged()
   const screens = useBreakpoint()
@@ -157,7 +159,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
         {/* Sheet */}
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1001,
-          background: '#fff', borderRadius: '24px 24px 0 0',
+          background: colors.bgElevated, borderRadius: '24px 24px 0 0',
           display: 'flex', flexDirection: 'column',
           height: '85vh',
           boxShadow: '0 -10px 40px rgba(0,0,0,0.1)',
@@ -167,7 +169,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
         }}>
           {/* Drag handle */}
           <div onClick={handleClose} style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 6px', flexShrink: 0 }}>
-            <div style={{ width: 40, height: 5, borderRadius: 3, background: '#E4E4E7' }} />
+            <div style={{ width: 40, height: 5, borderRadius: 3, background: colors.border }} />
           </div>
 
           {/* Header: type toggle + close */}
@@ -175,13 +177,13 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 20px 12px', flexShrink: 0,
           }}>
-            <div style={{ display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3 }}>
+            <div style={{ display: 'flex', background: colors.borderLight, borderRadius: 12, padding: 3 }}>
               {(['expense', 'income'] as const).map(t => (
                 <button key={t} onClick={() => { setType(t); setCategoryId(null) }} style={{
                   padding: '6px 20px', fontSize: 13, fontWeight: 600, border: 'none',
                   borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s',
-                  background: type === t ? '#fff' : 'transparent',
-                  color: type === t ? '#18181B' : '#A1A1AA',
+                  background: type === t ? colors.bgElevated : 'transparent',
+                  color: type === t ? colors.text : colors.textTertiary,
                   boxShadow: type === t ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                 }}>
                   {t === 'expense' ? '支出' : '收入'}
@@ -190,8 +192,8 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
             </div>
             <button onClick={handleClose} style={{
               width: 32, height: 32, borderRadius: '50%', border: 'none',
-              background: '#F4F4F5', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
+              background: colors.borderLight, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textSecondary,
             }}>
               <CloseOutlined style={{ fontSize: 14 }} />
             </button>
@@ -213,8 +215,8 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 26, transition: 'all 0.2s',
                       background: selected
-                        ? (type === 'expense' ? '#18181B' : '#10B981')
-                        : '#FAFAFA',
+                        ? (type === 'expense' ? (isDark ? '#242424' : '#18181B') : '#10B981')
+                        : colors.bg,
                       boxShadow: selected
                         ? (type === 'expense' ? '0 4px 12px rgba(24,24,27,0.2)' : '0 4px 12px rgba(16,185,129,0.2)')
                         : 'none',
@@ -226,7 +228,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
                     </div>
                     <span style={{
                       fontSize: 11, fontWeight: selected ? 700 : 500,
-                      color: selected ? '#18181B' : '#71717A',
+                      color: selected ? colors.text : colors.textSecondary,
                     }}>
                       {cat.name}
                     </span>
@@ -238,24 +240,24 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
 
           {/* Bottom: Amount + Remark + Keypad */}
           <div style={{
-            flexShrink: 0, background: '#FAFAFA',
+            flexShrink: 0, background: colors.bg,
             borderRadius: '24px 24px 0 0',
             boxShadow: '0 -8px 30px rgba(0,0,0,0.04)',
           }}>
             {/* Amount + remark */}
             <div style={{ padding: '16px 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 20, fontWeight: 500, color: '#A1A1AA' }}>¥</span>
-                <span style={{ fontSize: 36, fontWeight: 700, color: '#18181B', letterSpacing: '-0.02em' }}>
+                <span style={{ fontSize: 20, fontWeight: 500, color: colors.textTertiary }}>¥</span>
+                <span style={{ fontSize: 36, fontWeight: 700, color: colors.text, letterSpacing: '-0.02em' }}>
                   {expression || '0'}
                 </span>
               </div>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                background: '#fff', padding: '10px 14px', borderRadius: 14,
-                border: '1px solid #F4F4F5',
+                background: colors.bgElevated, padding: '10px 14px', borderRadius: 14,
+                border: `1px solid ${colors.borderLight}`,
               }}>
-                <span style={{ fontSize: 14, color: '#A1A1AA' }}>✏️</span>
+                <span style={{ fontSize: 14, color: colors.textTertiary }}>✏️</span>
                 <input
                   value={remark}
                   onChange={e => setRemark(e.target.value)}
@@ -264,7 +266,7 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
                   list="note-history"
                   style={{
                     flex: 1, border: 'none', outline: 'none', fontSize: 13,
-                    color: '#18181B', background: 'transparent',
+                    color: colors.text, background: 'transparent',
                   }}
                 />
                 <datalist id="note-history">
@@ -279,21 +281,21 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
               gap: 6, padding: '8px 16px 16px',
             }}>
               {/* Row 1 */}
-              <KeyBtn onClick={() => handleKey('1')}>1</KeyBtn>
-              <KeyBtn onClick={() => handleKey('2')}>2</KeyBtn>
-              <KeyBtn onClick={() => handleKey('3')}>3</KeyBtn>
+              <KeyBtn onClick={() => handleKey('1')} colors={colors} isDark={isDark}>1</KeyBtn>
+              <KeyBtn onClick={() => handleKey('2')} colors={colors} isDark={isDark}>2</KeyBtn>
+              <KeyBtn onClick={() => handleKey('3')} colors={colors} isDark={isDark}>3</KeyBtn>
               {/* Date button */}
               <button
                 type="button"
                 onClick={() => dateInputRef.current?.showPicker?.() ?? dateInputRef.current?.click()}
                 style={{
-                  background: '#fff', borderRadius: 16, minHeight: 48, border: '1px solid #F4F4F5',
+                  background: colors.bgElevated, borderRadius: 16, minHeight: 48, border: `1px solid ${colors.borderLight}`,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                   gap: 1, cursor: 'pointer', position: 'relative', overflow: 'hidden',
                 }}
               >
                 <span style={{ fontSize: 14 }}>📅</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: colors.textSecondary }}>{dateLabel}</span>
                 <input
                   ref={dateInputRef}
                   type="date"
@@ -307,23 +309,23 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
               </button>
 
               {/* Row 2 */}
-              <KeyBtn onClick={() => handleKey('4')}>4</KeyBtn>
-              <KeyBtn onClick={() => handleKey('5')}>5</KeyBtn>
-              <KeyBtn onClick={() => handleKey('6')}>6</KeyBtn>
-              <KeyBtn onClick={() => handleKey('del')} color="#71717A">
+              <KeyBtn onClick={() => handleKey('4')} colors={colors} isDark={isDark}>4</KeyBtn>
+              <KeyBtn onClick={() => handleKey('5')} colors={colors} isDark={isDark}>5</KeyBtn>
+              <KeyBtn onClick={() => handleKey('6')} colors={colors} isDark={isDark}>6</KeyBtn>
+              <KeyBtn onClick={() => handleKey('del')} color={colors.textSecondary} colors={colors} isDark={isDark}>
                 <DeleteOutlined style={{ fontSize: 20 }} />
               </KeyBtn>
 
               {/* Row 3 */}
-              <KeyBtn onClick={() => handleKey('7')}>7</KeyBtn>
-              <KeyBtn onClick={() => handleKey('8')}>8</KeyBtn>
-              <KeyBtn onClick={() => handleKey('9')}>9</KeyBtn>
+              <KeyBtn onClick={() => handleKey('7')} colors={colors} isDark={isDark}>7</KeyBtn>
+              <KeyBtn onClick={() => handleKey('8')} colors={colors} isDark={isDark}>8</KeyBtn>
+              <KeyBtn onClick={() => handleKey('9')} colors={colors} isDark={isDark}>9</KeyBtn>
               {/* 完成 button spans 2 rows */}
               <button onClick={handleSave} style={{
                 gridRow: 'span 2', borderRadius: 16, border: 'none',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 16, fontWeight: 700, color: '#fff', cursor: 'pointer',
-                background: type === 'expense' ? '#18181B' : '#10B981',
+                background: type === 'expense' ? (isDark ? '#242424' : '#18181B') : '#10B981',
                 boxShadow: type === 'expense'
                   ? '0 4px 12px rgba(24,24,27,0.2)'
                   : '0 4px 12px rgba(16,185,129,0.2)',
@@ -332,9 +334,9 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
               </button>
 
               {/* Row 4 */}
-              <KeyBtn onClick={() => handleKey('.')}>.</KeyBtn>
-              <KeyBtn onClick={() => handleKey('0')}>0</KeyBtn>
-              <KeyBtn onClick={() => handleKey('00')}>00</KeyBtn>
+              <KeyBtn onClick={() => handleKey('.')} colors={colors} isDark={isDark}>.</KeyBtn>
+              <KeyBtn onClick={() => handleKey('0')} colors={colors} isDark={isDark}>0</KeyBtn>
+              <KeyBtn onClick={() => handleKey('00')} colors={colors} isDark={isDark}>00</KeyBtn>
             </div>
 
             {/* Safe area */}
@@ -358,19 +360,19 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
         transform: visible ? 'translate(-50%, -50%) scale(1)' : 'translate(-50%, -48%) scale(0.96)',
         opacity: visible ? 1 : 0,
         transition: 'transform 0.3s ease, opacity 0.3s ease',
-        zIndex: 1001, background: '#fff', borderRadius: 24, width: 420, maxHeight: '85vh',
+        zIndex: 1001, background: colors.bgElevated, borderRadius: 24, width: 420, maxHeight: '85vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
       }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px' }}>
-          <div style={{ display: 'flex', background: '#F4F4F5', borderRadius: 12, padding: 3 }}>
+          <div style={{ display: 'flex', background: colors.borderLight, borderRadius: 12, padding: 3 }}>
             {(['expense', 'income'] as const).map(t => (
               <button key={t} onClick={() => { setType(t); setCategoryId(null) }} style={{
                 padding: '6px 24px', fontSize: 13, fontWeight: 600, border: 'none',
                 borderRadius: 10, cursor: 'pointer',
-                background: type === t ? '#fff' : 'transparent',
-                color: type === t ? '#18181B' : '#A1A1AA',
+                background: type === t ? colors.bgElevated : 'transparent',
+                color: type === t ? colors.text : colors.textTertiary,
                 boxShadow: type === t ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               }}>
                 {t === 'expense' ? '支出' : '收入'}
@@ -379,8 +381,8 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
           </div>
           <button onClick={handleClose} style={{
             width: 32, height: 32, borderRadius: '50%', border: 'none',
-            background: '#F4F4F5', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717A',
+            background: colors.borderLight, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textSecondary,
           }}>
             <CloseOutlined style={{ fontSize: 14 }} />
           </button>
@@ -397,13 +399,13 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
                   <div style={{
                     width: 52, height: 52, borderRadius: 16,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
-                    background: selected ? (type === 'expense' ? '#18181B' : '#10B981') : '#FAFAFA',
+                    background: selected ? (type === 'expense' ? (isDark ? '#242424' : '#18181B') : '#10B981') : colors.bg,
                     boxShadow: selected ? '0 4px 12px rgba(0,0,0,0.15)' : 'none',
                     transform: selected ? 'scale(1.05)' : 'scale(1)', transition: 'all 0.2s',
                   }}>
                     {cat.emoji}
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: selected ? 700 : 500, color: selected ? '#18181B' : '#71717A' }}>
+                  <span style={{ fontSize: 11, fontWeight: selected ? 700 : 500, color: selected ? colors.text : colors.textSecondary }}>
                     {cat.name}
                   </span>
                 </div>
@@ -413,39 +415,39 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
         </div>
 
         {/* Amount + Remark + Keypad */}
-        <div style={{ flexShrink: 0, background: '#FAFAFA', borderRadius: '24px 24px 0 0' }}>
+        <div style={{ flexShrink: 0, background: colors.bg, borderRadius: '24px 24px 0 0' }}>
           <div style={{ padding: '14px 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span style={{ fontSize: 20, fontWeight: 500, color: '#A1A1AA' }}>¥</span>
-              <span style={{ fontSize: 36, fontWeight: 700, color: '#18181B' }}>{expression || '0'}</span>
+              <span style={{ fontSize: 20, fontWeight: 500, color: colors.textTertiary }}>¥</span>
+              <span style={{ fontSize: 36, fontWeight: 700, color: colors.text }}>{expression || '0'}</span>
             </div>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              background: '#fff', padding: '10px 14px', borderRadius: 14, border: '1px solid #F4F4F5',
+              background: colors.bgElevated, padding: '10px 14px', borderRadius: 14, border: `1px solid ${colors.borderLight}`,
             }}>
               <span style={{ fontSize: 14 }}>✏️</span>
               <input value={remark} onChange={e => setRemark(e.target.value)}
                 placeholder="添加备注..." maxLength={30}
-                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: '#18181B', background: 'transparent' }}
+                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: colors.text, background: 'transparent' }}
               />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, padding: '8px 16px 16px' }}>
-            <KeyBtn onClick={() => handleKey('1')}>1</KeyBtn>
-            <KeyBtn onClick={() => handleKey('2')}>2</KeyBtn>
-            <KeyBtn onClick={() => handleKey('3')}>3</KeyBtn>
+            <KeyBtn onClick={() => handleKey('1')} colors={colors} isDark={isDark}>1</KeyBtn>
+            <KeyBtn onClick={() => handleKey('2')} colors={colors} isDark={isDark}>2</KeyBtn>
+            <KeyBtn onClick={() => handleKey('3')} colors={colors} isDark={isDark}>3</KeyBtn>
             <button
               type="button"
               onClick={() => dateInputDesktopRef.current?.showPicker?.() ?? dateInputDesktopRef.current?.click()}
               style={{
-                background: '#fff', borderRadius: 16, minHeight: 48, border: '1px solid #F4F4F5',
+                background: colors.bgElevated, borderRadius: 16, minHeight: 48, border: `1px solid ${colors.borderLight}`,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: 1, cursor: 'pointer', position: 'relative', overflow: 'hidden',
               }}
             >
               <span style={{ fontSize: 14 }}>📅</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#71717A' }}>{dateLabel}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: colors.textSecondary }}>{dateLabel}</span>
               <input
                 ref={dateInputDesktopRef}
                 type="date"
@@ -454,24 +456,24 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
                 style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 1, opacity: 0, pointerEvents: 'none' }}
               />
             </button>
-            <KeyBtn onClick={() => handleKey('4')}>4</KeyBtn>
-            <KeyBtn onClick={() => handleKey('5')}>5</KeyBtn>
-            <KeyBtn onClick={() => handleKey('6')}>6</KeyBtn>
-            <KeyBtn onClick={() => handleKey('del')} color="#71717A"><DeleteOutlined style={{ fontSize: 20 }} /></KeyBtn>
-            <KeyBtn onClick={() => handleKey('7')}>7</KeyBtn>
-            <KeyBtn onClick={() => handleKey('8')}>8</KeyBtn>
-            <KeyBtn onClick={() => handleKey('9')}>9</KeyBtn>
+            <KeyBtn onClick={() => handleKey('4')} colors={colors} isDark={isDark}>4</KeyBtn>
+            <KeyBtn onClick={() => handleKey('5')} colors={colors} isDark={isDark}>5</KeyBtn>
+            <KeyBtn onClick={() => handleKey('6')} colors={colors} isDark={isDark}>6</KeyBtn>
+            <KeyBtn onClick={() => handleKey('del')} color={colors.textSecondary} colors={colors} isDark={isDark}><DeleteOutlined style={{ fontSize: 20 }} /></KeyBtn>
+            <KeyBtn onClick={() => handleKey('7')} colors={colors} isDark={isDark}>7</KeyBtn>
+            <KeyBtn onClick={() => handleKey('8')} colors={colors} isDark={isDark}>8</KeyBtn>
+            <KeyBtn onClick={() => handleKey('9')} colors={colors} isDark={isDark}>9</KeyBtn>
             <button onClick={handleSave} style={{
               gridRow: 'span 2', borderRadius: 16, border: 'none',
               fontSize: 16, fontWeight: 700, color: '#fff', cursor: 'pointer',
-              background: type === 'expense' ? '#18181B' : '#10B981',
+              background: type === 'expense' ? (isDark ? '#242424' : '#18181B') : '#10B981',
               boxShadow: type === 'expense' ? '0 4px 12px rgba(24,24,27,0.2)' : '0 4px 12px rgba(16,185,129,0.2)',
             }}>
               完成
             </button>
-            <KeyBtn onClick={() => handleKey('.')}>.</KeyBtn>
-            <KeyBtn onClick={() => handleKey('0')}>0</KeyBtn>
-            <KeyBtn onClick={() => handleKey('00')}>00</KeyBtn>
+            <KeyBtn onClick={() => handleKey('.')} colors={colors} isDark={isDark}>.</KeyBtn>
+            <KeyBtn onClick={() => handleKey('0')} colors={colors} isDark={isDark}>0</KeyBtn>
+            <KeyBtn onClick={() => handleKey('00')} colors={colors} isDark={isDark}>00</KeyBtn>
           </div>
         </div>
       </div>
@@ -479,18 +481,26 @@ export default function QuickEntry({ open, onClose, ledgerId, editingTransaction
   )
 }
 
-function KeyBtn({ children, onClick, color }: { children: React.ReactNode; onClick: () => void; color?: string }) {
+function KeyBtn({ children, onClick, color, colors, isDark }: {
+  children: React.ReactNode; onClick: () => void; color?: string;
+  colors?: { bgElevated: string; borderLight: string; text: string; bg: string };
+  isDark?: boolean;
+}) {
+  const bgColor = colors?.bgElevated ?? '#fff'
+  const pressedBg = colors?.bg ?? '#FAFAFA'
+  const borderColor = colors?.borderLight ?? '#F4F4F5'
+  const textColor = color ?? colors?.text ?? '#18181B'
   return (
     <button onClick={onClick} style={{
-      background: '#fff', borderRadius: 16, border: '1px solid #F4F4F5',
+      background: bgColor, borderRadius: 16, border: `1px solid ${borderColor}`,
       padding: '12px 0', fontSize: 22, fontWeight: 600,
-      color: color ?? '#18181B', cursor: 'pointer',
+      color: textColor, cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'all 0.1s',
     }}
-      onPointerDown={e => { e.currentTarget.style.transform = 'scale(0.95)'; e.currentTarget.style.background = '#FAFAFA' }}
-      onPointerUp={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#fff' }}
-      onPointerLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#fff' }}
+      onPointerDown={e => { e.currentTarget.style.transform = 'scale(0.95)'; e.currentTarget.style.background = pressedBg }}
+      onPointerUp={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = bgColor }}
+      onPointerLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = bgColor }}
     >
       {children}
     </button>

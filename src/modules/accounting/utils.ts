@@ -1,4 +1,4 @@
-import type { AppDb, AccCategory, AccTransaction, TransactionType } from '@/shared/db'
+import type { AppDb, AccCategory, AccTransaction, AccRecurring, TransactionType } from '@/shared/db'
 
 // --- Preset categories ---
 
@@ -225,6 +225,80 @@ export function exportAccountingCSV(
       ].join(',')
     })
   return [header, ...rows].join('\n')
+}
+
+// --- Recurring transactions ---
+
+function nextOccurrence(dateStr: string, frequency: AccRecurring['frequency']): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  if (frequency === 'daily') d.setDate(d.getDate() + 1)
+  else if (frequency === 'weekly') d.setDate(d.getDate() + 7)
+  else d.setMonth(d.getMonth() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Generate missing recurring transactions up to today.
+ * Idempotent: checks for existing transactions by recurringId + date.
+ * Wrapped in a Dexie transaction for atomicity.
+ */
+export async function generateRecurringTransactions(db: AppDb): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10)
+  const rules = await db.accRecurring
+    .filter(r => !r.deletedAt && r.isActive)
+    .toArray()
+
+  if (rules.length === 0) return 0
+
+  let generated = 0
+
+  await db.transaction('rw', [db.accRecurring, db.accTransactions], async () => {
+    for (const rule of rules) {
+      let cursor = rule.lastGeneratedDate
+        ? nextOccurrence(rule.lastGeneratedDate, rule.frequency)
+        : rule.startDate
+
+      let lastGenerated = rule.lastGeneratedDate
+
+      while (cursor <= today) {
+        if (rule.endDate && cursor > rule.endDate) break
+
+        // Idempotent: skip if already generated
+        const existing = await db.accTransactions
+          .filter(t => t.recurringId === rule.id && t.date === cursor)
+          .count()
+
+        if (existing === 0) {
+          const now = Date.now()
+          await db.accTransactions.add({
+            ledgerId: rule.ledgerId,
+            type: rule.type,
+            categoryId: rule.categoryId,
+            amount: rule.amount,
+            note: rule.note,
+            tags: rule.tags,
+            date: cursor,
+            recurringId: rule.id,
+            createdAt: now,
+            updatedAt: now,
+          })
+          generated++
+        }
+
+        lastGenerated = cursor
+        cursor = nextOccurrence(cursor, rule.frequency)
+      }
+
+      if (lastGenerated && lastGenerated !== rule.lastGeneratedDate) {
+        await db.accRecurring.update(rule.id, {
+          lastGeneratedDate: lastGenerated,
+          updatedAt: Date.now(),
+        })
+      }
+    }
+  })
+
+  return generated
 }
 
 // --- Date helpers ---
