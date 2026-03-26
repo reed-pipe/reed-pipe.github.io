@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Button, Segmented, Space, Tabs, Typography } from 'antd'
-import { SettingOutlined } from '@ant-design/icons'
+import { SettingOutlined, UploadOutlined } from '@ant-design/icons'
 import { useLiveQuery } from 'dexie-react-hooks'
 import dayjs from 'dayjs'
 import { useDb } from '@/shared/db/context'
@@ -14,7 +14,9 @@ import GoalSetting from './components/GoalSetting'
 import MeasurementForm from './components/MeasurementForm'
 import MeasurementChart from './components/MeasurementChart'
 import CalendarHeatmap from './components/CalendarHeatmap'
-import { colors, shadows } from '@/shared/theme'
+import CsvImporter from '@/shared/components/CsvImporter'
+import { useTheme } from '@/shared/hooks/useTheme'
+import { ChartSkeleton, ListSkeleton } from '@/shared/components/Skeleton'
 
 const { Text } = Typography
 
@@ -41,7 +43,9 @@ const dataTypeOptions = [
 ]
 
 export default function BodyManagement() {
+  const { colors, shadows } = useTheme()
   const [settingOpen, setSettingOpen] = useState(false)
+  const [csvImportOpen, setCsvImportOpen] = useState(false)
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all')
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>(30)
   const [dataType, setDataType] = useState<DataType>('weight')
@@ -53,13 +57,16 @@ export default function BodyManagement() {
     if (!loaded) void load(db)
   }, [loaded, load, db])
 
-  const records = useLiveQuery(() =>
+  const recordsRaw = useLiveQuery(() =>
     db.weightRecords.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db],
-  ) ?? []
+  )
+  const records = recordsRaw ?? []
 
-  const measurements = useLiveQuery(() =>
+  const measurementsRaw = useLiveQuery(() =>
     db.bodyMeasurements.orderBy('createdAt').filter(r => !r.deletedAt).toArray(), [db],
-  ) ?? []
+  )
+  const measurements = measurementsRaw ?? []
+  const loading = recordsRaw === undefined
 
   const filteredRecords = useMemo(() => {
     let result = records
@@ -79,13 +86,20 @@ export default function BodyManagement() {
     return measurements
   }, [measurements, rangeFilter])
 
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ChartSkeleton height={200} />
+      <ListSkeleton rows={5} />
+    </div>
+  )
+
   return (
     <div className="fade-in-up" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Record form card */}
       <div style={{
         padding: 18,
         borderRadius: 16,
-        background: '#fff',
+        background: colors.bgElevated,
         border: `1px solid ${colors.borderLight}`,
         boxShadow: shadows.card,
       }}>
@@ -95,14 +109,25 @@ export default function BodyManagement() {
       {/* Section header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text strong style={{ fontSize: 16 }}>数据概览</Text>
-        <Button
-          type="text"
-          icon={<SettingOutlined />}
-          onClick={() => setSettingOpen(true)}
-          style={{ borderRadius: 10 }}
-        >
-          设置
-        </Button>
+        <Space size={4}>
+          <Button
+            type="text"
+            size="small"
+            icon={<UploadOutlined />}
+            onClick={() => setCsvImportOpen(true)}
+            style={{ borderRadius: 10 }}
+          >
+            导入
+          </Button>
+          <Button
+            type="text"
+            icon={<SettingOutlined />}
+            onClick={() => setSettingOpen(true)}
+            style={{ borderRadius: 10 }}
+          >
+            设置
+          </Button>
+        </Space>
       </div>
 
       {/* Filters */}
@@ -172,6 +197,41 @@ export default function BodyManagement() {
       />
 
       <GoalSetting open={settingOpen} onClose={() => setSettingOpen(false)} onDataChanged={notifyChanged} />
+
+      <CsvImporter
+        open={csvImportOpen}
+        onClose={() => setCsvImportOpen(false)}
+        title="导入体重数据"
+        fields={[
+          { label: '日期', key: 'date', required: true },
+          { label: '体重', key: 'weight', required: true },
+          { label: '体脂', key: 'bodyFat' },
+          { label: '备注', key: 'note' },
+        ]}
+        checkConflict={async (row) => {
+          if (!row.date) return false
+          const existing = await db.weightRecords.where('date').equals(row.date).count()
+          return existing > 0
+        }}
+        onImport={async (rows) => {
+          const now = Date.now()
+          for (let i = 0; i < rows.length; i++) {
+            const r = rows[i]!
+            const weight = parseFloat(r.weight ?? '')
+            if (isNaN(weight) || !r.date) continue
+            await db.weightRecords.add({
+              date: r.date,
+              period: 'other' as const,
+              weight,
+              bodyFat: r.bodyFat ? parseFloat(r.bodyFat) : undefined,
+              note: r.note || undefined,
+              createdAt: now + i,
+              updatedAt: now + i,
+            })
+          }
+          notifyChanged()
+        }}
+      />
     </div>
   )
 }

@@ -9,17 +9,25 @@ interface Props {
 const PADDING = { top: 28, right: 48, bottom: 32, left: 48 }
 const SVG_HEIGHT = 240
 
-type MetricKey = 'waist' | 'hip' | 'chest' | 'leftArm' | 'rightArm' | 'leftThigh' | 'rightThigh'
+type MetricKey = 'waist' | 'hip' | 'chest' | 'leftArm' | 'rightArm' | 'leftThigh' | 'rightThigh' | 'whr'
 
 const metricOptions: { value: MetricKey; label: string }[] = [
   { value: 'waist', label: '腰围' },
   { value: 'hip', label: '臀围' },
+  { value: 'whr', label: '腰臀比' },
   { value: 'chest', label: '胸围' },
   { value: 'leftArm', label: '左臂围' },
   { value: 'rightArm', label: '右臂围' },
   { value: 'leftThigh', label: '左腿围' },
   { value: 'rightThigh', label: '右腿围' },
 ]
+
+function getMetricValue(r: BodyMeasurement, key: MetricKey): number | undefined {
+  if (key === 'whr') {
+    return r.waist && r.hip ? +(r.waist / r.hip).toFixed(3) : undefined
+  }
+  return r[key] ?? undefined
+}
 
 function niceYTicks(min: number, max: number, targetCount = 5): number[] {
   const rawStep = (max - min) / targetCount
@@ -53,7 +61,7 @@ export default function MeasurementChart({ records }: Props) {
   // 过滤出有该指标数据的记录
   const filtered = useMemo(() => {
     return records
-      .filter((r) => r[metric] != null)
+      .filter((r) => getMetricValue(r, metric) != null)
       .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
   }, [records, metric])
 
@@ -66,7 +74,7 @@ export default function MeasurementChart({ records }: Props) {
 
   // 检测可用的指标（有数据的才显示）
   const availableMetrics = useMemo(() => {
-    return metricOptions.filter((opt) => records.some((r) => r[opt.value] != null))
+    return metricOptions.filter((opt) => records.some((r) => getMetricValue(r, opt.value) != null))
   }, [records])
 
   const [containerWidth, setContainerWidth] = useState(400)
@@ -95,7 +103,7 @@ export default function MeasurementChart({ records }: Props) {
     )
   }
 
-  const values = byDate.map(([, r]) => r[metric]!)
+  const values = byDate.map(([, r]) => getMetricValue(r, metric)!)
   const minV = Math.min(...values)
   const maxV = Math.max(...values)
   const range = maxV - minV || 1
@@ -117,11 +125,11 @@ export default function MeasurementChart({ records }: Props) {
   const toX = (i: number) => PADDING.left + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW)
   const toY = (v: number) => PADDING.top + plotH - ((v - yMin) / yRange) * plotH
 
-  const linePoints = byDate.map(([, r], i) => `${toX(i)},${toY(r[metric]!)}`).join(' ')
+  const linePoints = byDate.map(([, r], i) => `${toX(i)},${toY(getMetricValue(r, metric)!)}`).join(' ')
   const first = byDate[0]!
   const last = byDate[byDate.length - 1]!
-  const areaPath = `M${toX(0)},${toY(first[1][metric]!)} ` +
-    byDate.slice(1).map(([, r], i) => `L${toX(i + 1)},${toY(r[metric]!)}`).join(' ') +
+  const areaPath = `M${toX(0)},${toY(getMetricValue(first[1], metric)!)} ` +
+    byDate.slice(1).map(([, r], i) => `L${toX(i + 1)},${toY(getMetricValue(r, metric)!)}`).join(' ') +
     ` L${toX(n - 1)},${PADDING.top + plotH} L${toX(0)},${PADDING.top + plotH} Z`
 
   const handleInteraction = (clientX: number) => {
@@ -194,7 +202,7 @@ export default function MeasurementChart({ records }: Props) {
             <circle
               key={r.id}
               cx={toX(i)}
-              cy={toY(r[metric]!)}
+              cy={toY(getMetricValue(r, metric)!)}
               r={activeIdx === i ? 6 : i === n - 1 ? 5 : 3.5}
               fill={activeIdx === i ? '#ff4d4f' : colorPrimary}
               stroke="#fff"
@@ -203,8 +211,8 @@ export default function MeasurementChart({ records }: Props) {
           ))}
 
           {activeIdx === null && (
-            <text x={toX(n - 1) + 8} y={toY(last[1][metric]!)} dominantBaseline="middle" fontSize={12} fontWeight={600} fill={colorPrimary}>
-              {last[1][metric]}
+            <text x={toX(n - 1) + 8} y={toY(getMetricValue(last[1], metric)!)} dominantBaseline="middle" fontSize={12} fontWeight={600} fill={colorPrimary}>
+              {getMetricValue(last[1], metric)}
             </text>
           )}
 
@@ -215,7 +223,7 @@ export default function MeasurementChart({ records }: Props) {
 
         {activeRecord && (
           <div style={{ padding: '6px 12px', fontSize: 13, color: colorTextSecondary, textAlign: 'center', borderTop: `1px solid ${colorBorderSecondary}` }}>
-            {activeRecord[0]} · <strong>{metricLabel} {activeRecord[1][metric]} cm</strong>
+            {activeRecord[0]} · <strong>{metricLabel} {getMetricValue(activeRecord[1], metric)}{metric === 'whr' ? '' : ' cm'}</strong>
             {activeRecord[1].note && ` · ${activeRecord[1].note}`}
           </div>
         )}
