@@ -1,19 +1,33 @@
-import { Button, Tooltip, message } from 'antd'
+import { useState } from 'react'
+import { Badge, Button, Tooltip, message } from 'antd'
 import {
   CloudSyncOutlined,
   SyncOutlined,
   CheckCircleOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useSyncStore } from './store'
 import { useAuthStore } from '../auth/store'
 import { useDb } from '../db/context'
 import { pushData, pullData } from './sync'
+import ConflictResolver from './ConflictResolver'
 
 export default function SyncIndicator() {
   const { syncing, lastSynced, error } = useSyncStore()
   const { cryptoKey, dataGistId, username } = useAuthStore()
   const db = useDb()
+  const [conflictOpen, setConflictOpen] = useState(false)
+
+  const conflictCount = useLiveQuery(
+    () => db.syncConflicts.where('status').equals('pending').count(),
+    [db]
+  ) ?? 0
+
+  const queueCount = useLiveQuery(
+    () => db.syncQueue.count(),
+    [db]
+  ) ?? 0
 
   const handleManualSync = async () => {
     if (!cryptoKey || !dataGistId || !username) {
@@ -67,6 +81,10 @@ export default function SyncIndicator() {
     color = '#52c41a'
   }
 
+  if (queueCount > 0 && !syncing) {
+    tooltip += ` | 待同步: ${queueCount}`
+  }
+
   if (!cryptoKey) {
     return (
       <Tooltip title="未同步（需重新登录）">
@@ -76,19 +94,24 @@ export default function SyncIndicator() {
   }
 
   return (
-    <Tooltip title={tooltip}>
-      <Button
-        type="text"
-        size="small"
-        icon={icon}
-        onClick={handleManualSync}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          void handlePull()
-        }}
-        style={{ color }}
-        loading={syncing}
-      />
-    </Tooltip>
+    <>
+      <Tooltip title={conflictCount > 0 ? `${tooltip} | ${conflictCount} 个冲突待解决` : tooltip}>
+        <Badge count={conflictCount} size="small" offset={[-4, 4]}>
+          <Button
+            type="text"
+            size="small"
+            icon={icon}
+            onClick={conflictCount > 0 ? () => setConflictOpen(true) : handleManualSync}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              void handlePull()
+            }}
+            style={{ color }}
+            loading={syncing}
+          />
+        </Badge>
+      </Tooltip>
+      <ConflictResolver open={conflictOpen} onClose={() => setConflictOpen(false)} />
+    </>
   )
 }

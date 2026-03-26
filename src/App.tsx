@@ -43,6 +43,18 @@ function SyncOnMount() {
     void init()
   }, [cryptoKey, dataGistId, username, db])
 
+  // 网络恢复时刷新离线同步队列
+  useEffect(() => {
+    const handleOnline = async () => {
+      if (!cryptoKey || !dataGistId || !username) return
+      const { flushSyncQueue } = await import('./shared/sync/offlineQueue')
+      await flushSyncQueue(db, cryptoKey, dataGistId, username)
+    }
+
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [cryptoKey, dataGistId, username, db])
+
   return null
 }
 

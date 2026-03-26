@@ -9,6 +9,19 @@ export function useDataChanged() {
   const { cryptoKey, dataGistId, username } = useAuthStore()
 
   return useCallback(() => {
+    if (!navigator.onLine) {
+      // 离线：写入 syncQueue
+      void db.syncQueue.add({
+        action: 'update',
+        table: '_batch',
+        recordId: 0,
+        data: null,
+        createdAt: Date.now(),
+      })
+      return
+    }
+    // 在线：正常 debounced push
+    if (!cryptoKey || !dataGistId || !username) return
     const { setSyncing, setSynced, setError } = useSyncStore.getState()
     notifyDataChanged(db, cryptoKey, dataGistId, username, () => setSyncing(true), (err) => {
       if (err) setError(err)
