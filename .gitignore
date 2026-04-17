@@ -23,3 +23,6 @@ npm-debug.log*
 
 # Claude Code local settings
 .claude/
+
+# Superpowers brainstorm sessions (visual companion mockups)
+.superpowers/
