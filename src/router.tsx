@@ -7,7 +7,7 @@ const Home = React.lazy(() => import('./modules/home'))
 const BodyManagement = React.lazy(() => import('./modules/body-management'))
 const Travel = React.lazy(() => import('./modules/travel'))
 const Accounting = React.lazy(() => import('./modules/accounting'))
-const Watchface = React.lazy(() => import('./modules/watchface'))
+const WatchS5 = React.lazy(() => import('./modules/watch-s5'))
 
 export type RouteConfig = RouteObject & {
   /** 侧边栏显示名称，不设则不显示在菜单中 */
@@ -63,13 +63,13 @@ export const routes: RouteConfig[] = [
     icon: <AccountBookOutlined />,
   },
   {
-    path: '/watchface',
+    path: '/watch-s5',
     element: (
       <React.Suspense fallback={null}>
-        <Watchface />
+        <WatchS5 />
       </React.Suspense>
     ),
-    label: '手环表盘',
+    label: 'Watch S5 表盘',
     icon: <ClockCircleOutlined />,
   },
   {
