@@ -1,12 +1,13 @@
 import React from 'react'
 import type { RouteObject } from 'react-router-dom'
 import { Navigate } from 'react-router-dom'
-import { HomeOutlined, HeartOutlined, EnvironmentOutlined, AccountBookOutlined } from '@ant-design/icons'
+import { HomeOutlined, HeartOutlined, EnvironmentOutlined, AccountBookOutlined, ClockCircleOutlined } from '@ant-design/icons'
 
 const Home = React.lazy(() => import('./modules/home'))
 const BodyManagement = React.lazy(() => import('./modules/body-management'))
 const Travel = React.lazy(() => import('./modules/travel'))
 const Accounting = React.lazy(() => import('./modules/accounting'))
+const Watchface = React.lazy(() => import('./modules/watchface'))
 
 export type RouteConfig = RouteObject & {
   /** 侧边栏显示名称，不设则不显示在菜单中 */
@@ -60,6 +61,16 @@ export const routes: RouteConfig[] = [
     ),
     label: '记账',
     icon: <AccountBookOutlined />,
+  },
+  {
+    path: '/watchface',
+    element: (
+      <React.Suspense fallback={null}>
+        <Watchface />
+      </React.Suspense>
+    ),
+    label: '手环表盘',
+    icon: <ClockCircleOutlined />,
   },
   {
     path: '*',

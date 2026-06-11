@@ -26,6 +26,7 @@
     "dayjs": "^1.11.19",
     "dexie": "^4.3.0",
     "dexie-react-hooks": "^4.2.0",
+    "fflate": "^0.8.3",
     "framer-motion": "^12.35.0",
     "leaflet": "^1.9.4",
     "react": "^19.2.4",
